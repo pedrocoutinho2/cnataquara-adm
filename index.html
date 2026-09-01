@@ -1169,6 +1169,21 @@ const LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAABuCAMAAADLXPzW
 const UNIDADES=[{id:'taquara',nome:'CNA Taquara',sub:'Estrada da Soca, 129'},{id:'queimados',nome:'CNA Queimados',sub:'Unidade Queimados'}];
 let S = { token:null, refresh:null, uid:null, role:null, nome:null, email:null, avatar:null, telefone:null, unidade:null, comp: curComp(), view:'resumo', cfg:{} };
 
+/* ================= SESSAO PERSISTIDA =================
+   O modulo do ponto usa supabase-js, que ja guarda a sessao sozinho. O adm
+   mantinha o token so em memoria, entao qualquer F5 caia na tela de login.
+   Guardamos apenas o refresh_token (mesmo comportamento do supabase-js) e a
+   ultima unidade escolhida. O access_token nao e guardado: ele e curto e sai
+   do refresh no boot. */
+const LSK='cnaadm.sessao';
+function salvarSessao(){
+  try{ localStorage.setItem(LSK, JSON.stringify({refresh:S.refresh, unidade:S.unidade, ts:Date.now()})); }catch(e){}
+}
+function limparSessao(){ try{ localStorage.removeItem(LSK); }catch(e){} }
+function lerSessao(){
+  try{ const raw=localStorage.getItem(LSK); return raw?JSON.parse(raw):null; }catch(e){ return null; }
+}
+
 document.querySelectorAll('.logoImg').forEach(i=>i.src=LOGO);
 
 function curComp(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
@@ -1223,7 +1238,11 @@ async function refreshToken(){
   try{
     const r = await fetch(SUPA+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':ANON,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:S.refresh})});
     if(!r.ok) return false;
-    const d = await r.json(); S.token=d.access_token; S.refresh=d.refresh_token; return true;
+    const d = await r.json();
+    S.token=d.access_token; S.refresh=d.refresh_token;
+    if(d.user&&d.user.id) S.uid=d.user.id;
+    salvarSessao();
+    return true;
   }catch{ return false; }
 }
 
@@ -1239,6 +1258,7 @@ async function doLogin(){
     const d = await r.json();
     if(!r.ok) throw new Error(d.error_description||d.msg||'E-mail ou senha incorretos');
     S.token=d.access_token; S.refresh=d.refresh_token; S.uid=d.user.id;
+    salvarSessao();
     espelharPonto(loEmail.value.trim(),loPass.value);
     await afterLogin();
   }catch(e){ authMsg(e.message); }
@@ -1280,7 +1300,7 @@ function showUnitPicker(){
   document.getElementById('auth').style.display='flex';
 }
 async function loadUnidade(id){
-  S.unidade=id; S.cfg={};
+  S.unidade=id; S.cfg={}; salvarSessao();
   const cfgRows = await db.get('fin_config',`unidade=eq.${id}&select=chave,valor`);
   cfgRows.forEach(r=>S.cfg[r.chave]=r.valor);
   const u=UNIDADES.find(x=>x.id===id);
@@ -1299,7 +1319,7 @@ function closeNav(){ document.body.classList.remove('navOpen'); const b=document
 function toggleNav(){ document.body.classList.contains('navOpen')?closeNav():openNav(); }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeNav(); });
 window.addEventListener('resize',()=>{ if(window.innerWidth>860) closeNav(); });
-function logout(){ closeNav(); fecharUserMenu(); window.__PONTO_SESSAO=null; window.PONTO?.sair(); S={token:null,refresh:null,uid:null,role:null,nome:null,email:null,avatar:null,telefone:null,unidade:null,comp:curComp(),view:'resumo',cfg:{}}; document.getElementById('app').style.display='none'; document.getElementById('auth').style.display='flex'; showLogin(); }
+function logout(){ closeNav(); fecharUserMenu(); limparSessao(); window.__PONTO_SESSAO=null; window.PONTO?.sair(); S={token:null,refresh:null,uid:null,role:null,nome:null,email:null,avatar:null,telefone:null,unidade:null,comp:curComp(),view:'resumo',cfg:{}}; document.getElementById('app').style.display='none'; document.getElementById('auth').style.display='flex'; showLogin(); }
 
 /* ================= ROUTER ================= */
 const TITLES={resumo:'Resumo do mês',fixas:'Contas a pagar · Despesas fixas',variaveis:'Contas a pagar · Despesas variáveis',folha:'Folha de pagamento',receitas:'Receitas',dre:'DRE',df:'DF · Relatório de franquia',equipe:'Equipe · Funcionários',ponto:'Ponto · Fechamento para a folha',rep_equipe:'Ponto · Equipe e biometria',rep_espelho:'Ponto · Espelho do mês',rep_banco:'Ponto · Banco de horas',rep_pendencias:'Ponto · Pendências',rep_relatorios:'Ponto · Relatórios',rep_terminais:'Ponto · Terminais',rep_config:'Ponto · Configurações',documentos:'Documentos',contratos:'Contratos e empresas parceiras',acessos:'Acessos ao sistema'};
@@ -2010,6 +2030,34 @@ async function salvaCfg(){
 }
 
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&document.getElementById('auth').style.display!=='none'){ if(loginBox.style.display!=='none') doLogin(); }});
+
+/* Ao abrir a pagina, tenta reerguer a sessao pelo refresh_token guardado.
+   Falhou (token expirado, revogado, sem rede)? Cai na tela de login normal. */
+async function restaurarSessao(){
+  const sess=lerSessao();
+  if(!sess||!sess.refresh) return false;
+  S.refresh=sess.refresh;
+  const authEl=document.getElementById('auth');
+  const box=document.getElementById('loginBox');
+  if(box) box.style.display='none';
+  authMsg('Reconectando…', true);
+  try{
+    const ok=await refreshToken();
+    if(!ok){ throw new Error('sessão expirada'); }
+    await afterLogin();
+    // afterLogin abre o seletor de unidade; se ja sabiamos qual era, pula direto.
+    if(S.role && sess.unidade && UNIDADES.some(u=>u.id===sess.unidade)){
+      await loadUnidade(sess.unidade);
+    }
+    return true;
+  }catch(e){
+    limparSessao();
+    S.token=null; S.refresh=null; S.uid=null;
+    showLogin();
+    return false;
+  }
+}
+window.addEventListener('DOMContentLoaded',()=>{ restaurarSessao(); });
 
 /* ================= GESTÃO: EQUIPE · DOCUMENTOS · CONTRATOS · PONTO ================= */
 
