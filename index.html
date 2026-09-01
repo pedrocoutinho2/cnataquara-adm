@@ -2199,7 +2199,16 @@ async function abrirFuncionario(id){
 
 function fichaHTML(f,fi){
   return `
-    <p class="hint" style="margin-bottom:12px">${esc(f.setor||'')}${f.funcao?' · '+esc(f.funcao):''} · ${f.tipo==='horista'?'Horista':'Mensalista'}</p>
+    <h3 class="mSec">Cadastro</h3>
+    <div class="gGrid">
+      ${gF('Nome','fc_nome',f.nome)}
+      ${gS('Setor','fc_setor',f.setor||'Administrativo',SETORES)}
+      <div class="field"><label>Função</label>
+        <input class="txtInp" id="fc_funcao" list="fc_funcoes" value="${esc(f.funcao||'')}">
+        <datalist id="fc_funcoes">${((S.cfg&&S.cfg.funcoes)||[]).map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
+      ${gS('Tipo','fc_tipo',f.tipo||'mensalista',[['mensalista','Mensalista'],['horista','Horista']])}
+    </div>
+    <p class="hint" style="margin:6px 0 12px">Salário, comissão e benefícios continuam na Folha de pagamento.</p>
     <h3 class="mSec">Identificação</h3>
     <div class="gGrid">
       ${gF('CPF','fk_cpf',fi.cpf)}
@@ -2309,6 +2318,8 @@ function histFuncHTML(f,ev){
 }
 
 async function salvarFicha(id){
+  const nome=gv('fc_nome');
+  if(document.getElementById('fc_nome') && !nome) return toast('O nome não pode ficar vazio');
   const body={funcionario_id:id,
     cpf:gvn('fk_cpf'), rg:gvn('fk_rg'), rg_emissor:gvn('fk_rgem'), pis_pasep:gvn('fk_pis'),
     ctps_numero:gvn('fk_ctpsn'), ctps_serie:gvn('fk_ctpss'), data_nascimento:gvn('fk_nasc'),
@@ -2322,7 +2333,17 @@ async function salvarFicha(id){
     jornada_semanal_horas:gvf('fk_jor')||44,
     demissao:gvn('fk_dem'), motivo_desligamento:gvn('fk_motivo'), obs:gvn('fk_obs'),
     updated_at:new Date().toISOString()};
-  try{ await db.upsert('fin_func_ficha',[body],'funcionario_id'); toast('Ficha salva'); render(); refreshModal(); }
+  try{
+    // Nome, setor, funcao e tipo vivem em fin_funcionarios; o resto em fin_func_ficha.
+    if(document.getElementById('fc_nome')){
+      await db.upd('fin_funcionarios','id=eq.'+id,{
+        nome, setor:gv('fc_setor')||'Administrativo',
+        funcao:gvn('fc_funcao'), tipo:gv('fc_tipo')||'mensalista'
+      });
+    }
+    await db.upsert('fin_func_ficha',[body],'funcionario_id');
+    toast('Ficha salva'); render(); refreshModal();
+  }
   catch(e){ toast(e.message); }
 }
 async function docUploadFunc(fid){
