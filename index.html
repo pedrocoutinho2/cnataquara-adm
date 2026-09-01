@@ -2085,7 +2085,8 @@ async function vEquipe(el){
   </div>
 
   <div class="panel">
-    <div class="panelHead"><h2>Equipe · ${esc(UNIDADES.find(u=>u.id===S.unidade).nome)}</h2></div>
+    <div class="panelHead"><h2>Equipe · ${esc(UNIDADES.find(u=>u.id===S.unidade).nome)}</h2>
+      <button class="btn" onclick="abrirNovoFuncionario()">+ Novo funcionário</button></div>
     <table><thead><tr><th>Nome</th><th>Setor</th><th>Função</th><th>Regime</th><th>Admissão</th><th>Documentos</th><th></th></tr></thead><tbody>
     ${funcs.map(f=>{ const fi=fmap[f.id]||{}; const np=pmap[f.id]||0;
       return `<tr class="${f.ativo?'':'paid'}">
@@ -2095,11 +2096,69 @@ async function vEquipe(el){
         <td>${esc((REGIMES.find(r=>r[0]===(fi.regime||'clt'))||['','—'])[1])}</td>
         <td>${fi.admissao?dBR(fi.admissao):'<span class="hint">a preencher</span>'}</td>
         <td>${np?`<span class="badge late">${np} pendente${np>1?'s':''}</span>`:'<span class="badge pago">Em dia</span>'}</td>
-        <td class="acoes"><button class="btn sm sec" onclick="abrirFuncionario(${f.id})">Abrir</button></td>
+        <td class="acoes">
+          <button class="btn sm sec" onclick="abrirFuncionario(${f.id})">Abrir</button>
+          <button class="ico" title="${f.ativo?'Desativar':'Reativar'}" onclick="toggleFunc(${f.id},${!f.ativo})">${f.ativo?'🚫':'↩'}</button>
+          <button class="ico del" title="Excluir" onclick="delFunc(${f.id})">🗑</button>
+        </td>
       </tr>`; }).join('')}
     </tbody></table>
-    <p class="hint" style="margin-top:10px">Salário, comissão e benefícios continuam na Folha de pagamento. Aqui ficam os dados pessoais, os documentos e o histórico.</p>
+    <p class="hint" style="margin-top:10px">Salário, comissão e benefícios continuam na Folha de pagamento. Aqui ficam os dados pessoais, os documentos e o histórico. Desativar preserva o histórico e tira a pessoa da folha; excluir só funciona enquanto não houver folha lançada.</p>
   </div>`;
+}
+
+/* Cadastro de funcionario em modal. O formulario inline da Folha continua
+   existindo por compatibilidade, mas o caminho novo e este: modal, padrao da
+   casa, e cai na mesma tabela fin_funcionarios. */
+function abrirNovoFuncionario(){
+  modalCtx=null;
+  const funcoes=(S.cfg&&S.cfg.funcoes)||[];
+  const html=`
+    <h3 class="mSec">Identificação</h3>
+    <div class="gGrid">
+      ${gF('Nome completo','nvf_nome','')}
+      ${gS('Setor','nvf_setor','Administrativo',SETORES)}
+      <div class="field"><label>Função</label>
+        <input class="txtInp" id="nvf_funcao" list="nvf_funcoes" placeholder="ex.: Consultor comercial">
+        <datalist id="nvf_funcoes">${funcoes.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
+      ${gS('Tipo','nvf_tipo','mensalista',[['mensalista','Mensalista'],['horista','Horista']])}
+    </div>
+    <h3 class="mSec">Remuneração</h3>
+    <div class="gGrid">
+      ${gFm('Salário mensal ou valor da hora','nvf_valor',0)}
+      ${gS('Comissão','nvf_com','nenhuma',[['nenhuma','Sem comissão'],['matricula','Por matrícula'],['pagamentos','Por pagamento'],['coord_comercial','50% do Comercial']])}
+      ${gFm('Vale transporte','nvf_vt',0)}
+      ${gFm('iFood','nvf_ifood',0)}
+      ${gFm('Plano de saúde','nvf_plano',0)}
+    </div>
+    <p class="hint" style="margin-top:10px">Mensalista usa o campo como salário do mês; horista usa como valor da hora. Depois de salvar, a ficha abre para os dados pessoais e os documentos.</p>
+    <div class="mFoot"><button class="btn" id="nvfBtn" onclick="salvarNovoFuncionario()">Cadastrar</button></div>`;
+  openModal('Novo funcionário',html);
+}
+
+async function salvarNovoFuncionario(){
+  const nome=gv('nvf_nome');
+  if(!nome) return toast('Preencha o nome');
+  const tipo=gv('nvf_tipo')||'mensalista';
+  const valor=parseBRL(gv('nvf_valor'));
+  const com=gv('nvf_com')||'nenhuma';
+  const btn=document.getElementById('nvfBtn'); if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  try{
+    const r=await db.ins('fin_funcionarios',[{
+      unidade:S.unidade, nome, funcao:gvn('nvf_funcao'), setor:gv('nvf_setor')||'Administrativo',
+      tipo, salario_cents:tipo==='mensalista'?valor:0, valor_hora_cents:tipo==='horista'?valor:0,
+      vt_cents:parseBRL(gv('nvf_vt')), ifood_cents:parseBRL(gv('nvf_ifood')),
+      plano_saude_cents:parseBRL(gv('nvf_plano')),
+      comissao_tipo:com, comissionado:com!=='nenhuma', ativo:true
+    }]);
+    toast('Funcionário cadastrado');
+    const novo=Array.isArray(r)?r[0]:null;
+    render();
+    if(novo&&novo.id) abrirFuncionario(novo.id); else fecharModal();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='Cadastrar'; }
+    toast(e.message||'Não deu para cadastrar');
+  }
 }
 
 let funcTab='ficha';
