@@ -1337,6 +1337,16 @@ function render(){
 }
 
 /* ================= CÁLCULOS DA FOLHA ================= */
+/* Horista (professores): o campo digitado na folha e o VALOR DO MES.
+   As horas saem de valor / valor_hora e existem so para exibicao, PDF do
+   contador e o card de horas pedagogicas. */
+function temBaseManual(r){ return r && r.base_manual_cents!=null && r.base_manual_cents!==''; }
+function horasDe(f,r){
+  const vh=f.valor_hora_cents||0;
+  if(temBaseManual(r)) return vh>0 ? Math.round(((+r.base_manual_cents||0)/vh)*100)/100 : 0;
+  return +(r&&r.horas||0);
+}
+function fmtH(h){ return (Math.round((+h||0)*100)/100).toFixed(2).replace('.',','); }
 function calcINSS(brutoCents){
   const faixas=S.cfg.inss_faixas||[];
   let inss=0, prev=0;
@@ -1379,7 +1389,9 @@ function calcRow(f,r,todos,rows){
     comissao=comissaoDe(f,r,todos,rows);
     dsr = comissao>0 ? Math.round(comissao*(dsrCfg.dias_descanso/dsrCfg.dias_uteis)) : 0;
   } else {
-    base=Math.round((r.horas||0)*(f.valor_hora_cents||0));
+    // Professores: o valor do mes e o dado digitado; as horas sao derivadas.
+    // Quando base_manual_cents e nulo vale o comportamento antigo (horas x valor/hora).
+    base = temBaseManual(r) ? (+r.base_manual_cents||0) : Math.round((r.horas||0)*(f.valor_hora_cents||0));
     comissao=0; dsr=0;
   }
   const bruto=base+comissao+dsr+(r.ajuste_cents||0);
@@ -1557,7 +1569,7 @@ async function vFolha(el){
   folhaData.funcs.forEach(f=>{
     const ex=rows.find(r=>r.funcionario_id===f.id);
     const valeSug=vales.filter(v=>v.funcionario_id===f.id&&v.parcelas_pagas<v.parcelas_total).reduce((a,v)=>a+v.valor_parcela_cents,0);
-    folhaData.rows[f.id]=ex||{unidade:S.unidade,competencia:c,funcionario_id:f.id,horas:0,matriculas:0,pagamentos:0,comissao_manual_cents:null,adiantamento_cents:0,desconto_vale_cents:valeSug,ajuste_cents:0,obs:null,fechada:false};
+    folhaData.rows[f.id]=ex||{unidade:S.unidade,competencia:c,funcionario_id:f.id,horas:0,base_manual_cents:null,matriculas:0,pagamentos:0,comissao_manual_cents:null,adiantamento_cents:0,desconto_vale_cents:valeSug,ajuste_cents:0,obs:null,fechada:false};
   });
   const fechada=rows.length>0&&rows.every(r=>r.fechada);
   drawFolha(el,fechada);
@@ -1581,7 +1593,8 @@ function drawFolha(el,fechada){
     const dis=fechada?'disabled':'';
     const ed=editFunc===f.id, prof=f.tipo==='horista';
     const producao = prof
-      ? `<input class="mini2" ${dis} value="${r.horas||0}" onchange="fEdit(${f.id},'horas',parseNum(this.value))"> h`
+      ? `<input class="mini money" ${dis} value="${temBaseManual(r)?moneyVal(r.base_manual_cents):''}" placeholder="${moneyVal(Math.round((r.horas||0)*(f.valor_hora_cents||0)))}" title="Digite o valor do mês; as horas saem daqui" onchange="fBaseProf(${f.id},this.value)">
+         <div class="hint">${f.valor_hora_cents?`${fmtH(horasDe(f,r))} h · ${fmt(f.valor_hora_cents)}/h`:'sem valor/hora cadastrado'}</div>`
       : f.comissao_tipo==='matricula'
         ? `<input class="mini2" ${dis} value="${r.matriculas||0}" onchange="fEdit(${f.id},'matriculas',parseInt(this.value)||0)"> mat`
         : f.comissao_tipo==='pagamentos'
@@ -1720,7 +1733,7 @@ async function exportarFolhaPDF(){
       tCom+=k.comissao_cents; tBase+=k.salario_base_cents;
       return `<tr>
         <td>${esc(f.nome)}<div class="pf-sub">${esc(f.funcao||'')}</div></td>
-        <td class="pf-n">${f.tipo==='horista'?(r.horas||0)+' h':'—'}</td>
+        <td class="pf-n">${f.tipo==='horista'?fmtH(horasDe(f,r))+' h':'—'}</td>
         <td class="pf-n">${fmt(k.salario_base_cents)}</td>
         <td class="pf-n">${k.comissao_cents?fmt(k.comissao_cents):'—'}</td>
         <td class="pf-n">${ad?fmt(ad):'—'}</td>
@@ -1754,6 +1767,11 @@ async function exportarFolhaPDF(){
 }
 
 function fEdit(fid,campo,valor){ folhaData.rows[fid][campo]=valor; drawFolha(document.getElementById('view'),folhaData.fechada); }
+function fBaseProf(fid,v){
+  const t=String(v==null?'':v).trim();
+  folhaData.rows[fid].base_manual_cents = (t===''||t==='R$ 0,00')?null:parseBRL(t);
+  drawFolha(document.getElementById('view'),folhaData.fechada);
+}
 function fComissao(fid,v){
   const t=String(v==null?'':v).trim();
   folhaData.rows[fid].comissao_manual_cents = (t===''||t==='R$ 0,00')?null:parseBRL(t);
@@ -1763,7 +1781,7 @@ async function salvarFolha(fechar){
   const c=S.comp;
   const payload=folhaData.funcs.map(f=>{
     const r=folhaData.rows[f.id], k=calcRow(f,r,folhaData.funcs,folhaData.rows);
-    return {unidade:S.unidade,competencia:c,funcionario_id:f.id,horas:r.horas||0,matriculas:r.matriculas||0,comissao_manual_cents:r.comissao_manual_cents,adiantamento_cents:r.adiantamento_cents||0,desconto_vale_cents:r.desconto_vale_cents||0,ajuste_cents:r.ajuste_cents||0,obs:r.obs,...k,fechada:!!fechar,updated_at:new Date().toISOString()};
+    return {unidade:S.unidade,competencia:c,funcionario_id:f.id,horas:horasDe(f,r),base_manual_cents:temBaseManual(r)?(+r.base_manual_cents||0):null,matriculas:r.matriculas||0,comissao_manual_cents:r.comissao_manual_cents,adiantamento_cents:r.adiantamento_cents||0,desconto_vale_cents:r.desconto_vale_cents||0,ajuste_cents:r.ajuste_cents||0,obs:r.obs,...k,fechada:!!fechar,updated_at:new Date().toISOString()};
   });
   await db.upsert('fin_folha',payload,'competencia,funcionario_id');
   if(fechar){
