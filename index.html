@@ -1712,10 +1712,24 @@ async function funcEdit(id,campo,v){
   const f=(folhaData.todos||[]).find(x=>x.id===id); if(f) f[campo]=v;
   toast('Atualizado');
 }
+/* ATENCAO: todas as FKs de fin_funcionarios sao ON DELETE CASCADE. Excluir
+   nao e bloqueado por vinculo: ele apaga junto ficha, documentos, eventos,
+   folha, vales e espelho de ponto da pessoa, sem volta. Por isso a exclusao
+   exige digitar o nome, e o caminho normal e Desativar. */
 async function delFunc(id){
-  if(!confirm('Excluir esse funcionário? Se já houver folha lançada, prefira Desativar.')) return;
+  const f=(EQUIPE_CACHE||[]).find(x=>x.id===id)||(folhaData&&(folhaData.todos||[]).find(x=>x.id===id))||null;
+  const nome=f?f.nome:'';
+  const alvo=String(nome||'').trim();
+  const msg='ATENÇÃO: excluir apaga em definitivo a ficha, os documentos, o histórico'
+    +' e a folha desta pessoa. Não há como desfazer.\n\n'
+    +'Para desativar sem perder nada, cancele e use o botão 🚫.\n\n'
+    +(alvo?('Para excluir mesmo assim, digite o nome exatamente como está: '+alvo):'Digite EXCLUIR para confirmar.');
+  const resp=prompt(msg);
+  if(resp==null) return;
+  const ok = alvo ? (String(resp).trim().toLowerCase()===alvo.toLowerCase()) : (String(resp).trim().toUpperCase()==='EXCLUIR');
+  if(!ok) return toast('Nome não confere. Nada foi excluído.');
   try{ await db.del('fin_funcionarios','id=eq.'+id); toast('Funcionário excluído'); }
-  catch(e){ toast('Não deu para excluir (há folha vinculada). Use Desativar.'); }
+  catch(e){ toast('Não deu para excluir: '+(e.message||'erro')); }
   render();
 }
 async function exportarFolhaPDF(){
@@ -2083,12 +2097,14 @@ const EVT_TIPOS=[['admissao','Admissão'],['efetivacao','Efetivação'],['altera
   ['afastamento','Afastamento'],['atestado','Atestado'],['advertencia','Advertência'],
   ['suspensao','Suspensão'],['desligamento','Desligamento'],['outro','Outro']];
 
+let EQUIPE_CACHE=[];
 async function vEquipe(el){
   const [funcs,fichas,pend]=await Promise.all([
     db.get('fin_funcionarios',`unidade=eq.${S.unidade}&select=*&order=nome.asc`),
     db.get('fin_func_ficha','select=*'),
     db.get('v_fin_doc_pendencias',`unidade=eq.${S.unidade}&select=funcionario_id,situacao`)
   ]);
+  EQUIPE_CACHE=funcs;
   const fmap={}; fichas.forEach(f=>fmap[f.funcionario_id]=f);
   const pmap={}; pend.forEach(p=>{ if(p.situacao!=='ok') pmap[p.funcionario_id]=(pmap[p.funcionario_id]||0)+1; });
   const ativos=funcs.filter(f=>f.ativo);
