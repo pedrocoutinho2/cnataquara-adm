@@ -1728,6 +1728,7 @@ function painelParametros(){
   <button class="btn" onclick="salvaCfg()">Salvar parâmetros</button></div>`;
 }
 async function funcEdit(id,campo,v){
+  if(campo==='nome'||campo==='funcao') v=capNome(v);
   await db.upd('fin_funcionarios','id=eq.'+id,{[campo]:v});
   const f=(folhaData.todos||[]).find(x=>x.id===id); if(f) f[campo]=v;
   toast('Atualizado');
@@ -1996,14 +1997,14 @@ Salários pedagógicos: ${fmt(sp)}`:''}`;
 async function toggleRec(id,ativo){ await db.upd('fin_despesas_recorrentes','id=eq.'+id,{ativo}); render(); }
 async function addRec(){
   if(!nrNome.value.trim()) return toast('Dê um nome');
-  await db.ins('fin_despesas_recorrentes',[{unidade:S.unidade,nome:nrNome.value.trim(),categoria:nrCat.value,valor_cents:nrValor.value.trim()?parseBRL(nrValor.value):null,dia_vencimento:+nrDia.value||null,responsavel:nrResp.value.trim()||null}]);
+  await db.ins('fin_despesas_recorrentes',[{unidade:S.unidade,nome:nrNome.value.trim(),categoria:nrCat.value,valor_cents:nrValor.value.trim()?parseBRL(nrValor.value):null,dia_vencimento:+nrDia.value||null,responsavel:capNome(nrResp.value)||null}]);
   toast('Recorrente adicionada — entra na geração do próximo mês'); render();
 }
 async function toggleFunc(id,ativo){ await db.upd('fin_funcionarios','id=eq.'+id,{ativo}); render(); }
 async function addFunc(){
   if(!nfNome.value.trim()) return toast('Dê um nome');
   const tipo=nfTipo.value, v=parseBRL(nfValor.value);
-  await db.ins('fin_funcionarios',[{unidade:S.unidade,nome:nfNome.value.trim(),funcao:nfFuncao.value,
+  await db.ins('fin_funcionarios',[{unidade:S.unidade,nome:capNome(nfNome.value),funcao:capNome(nfFuncao.value),
     setor:nfSetor.value,tipo,salario_cents:tipo==='mensalista'?v:0,valor_hora_cents:tipo==='horista'?v:0,
     vt_cents:parseBRL(nfVt.value),ifood_cents:parseBRL(nfIfood.value),plano_saude_cents:parseBRL(nfPlano.value),
     comissao_tipo:nfCom.value,comissionado:nfCom.value!=='nenhuma',ativo:true}]);
@@ -2085,9 +2086,53 @@ function refreshModal(){
 }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&document.body.classList.contains('modalOpen')) fecharModal(); });
 
+/* --- normalizacao de nome proprio ---
+   Nome de pessoa, endereco, bairro, cidade e afins chegam em caixa alta ou
+   baixa dependendo de quem digitou. Aqui tudo vira o mesmo padrao no blur do
+   campo e de novo na gravacao (o blur nao dispara quando salva no Enter).
+   Preposicao fica minuscula no meio, primeira palavra sempre maiuscula,
+   hifen e apostrofo capitalizam a parte seguinte, token com ponto interno
+   (S.A., E. Gomes) e algarismo romano ficam como estao. */
+const CAP_MINUS = new Set(['de','da','das','do','dos','e','di','du','del','della','dello',
+  'van','von','der','den','la','le','les','los','y','a','ao','aos','\u00e0','\u00e0s','em','na','no','nas','nos']);
+const CAP_ROMANO = /^[ivxlcdmIVXLCDM]{1,6}$/;
+function capPalavra(w){
+  if(!w) return w;
+  if(/^[A-Za-z\u00c0-\u00ff]\.[A-Za-z\u00c0-\u00ff.]*$/.test(w)) return w.toUpperCase();
+  return w.toLowerCase().replace(/(^|[-'\u2019(\[\/])([a-z\u00e0-\u00ff])/g,(m,sep,ch)=>sep+ch.toUpperCase());
+}
+function capNome(s){
+  let t=String(s==null?'':s).replace(/\s+/g,' ').trim();
+  if(!t) return t;
+  // sigla curta digitada inteira em caixa alta (RJ, SP) fica como esta
+  if(t.length<=3 && t===t.toUpperCase() && /^[A-Za-z\u00c0-\u00ff.]+$/.test(t)) return t;
+  // ponto colado na palavra seguinte (AV.DOS, INST.DE) ganha o espaco de volta
+  t=t.replace(/([A-Za-z\u00c0-\u00ff]{2,})\.(?=[A-Za-z\u00c0-\u00ff])/g,'$1. ');
+  return t.split(' ').map((w,i)=>{
+    const nu=w.replace(/[^0-9]/g,'').length;
+    if(nu && nu===w.replace(/[^0-9A-Za-z\u00c0-\u00ff]/g,'').length) return w;
+    const puro=w.replace(/[^A-Za-z\u00c0-\u00ff]/g,'');
+    if(puro.length>1 && CAP_ROMANO.test(puro) && w===w.toUpperCase()) return w;
+    const low=w.toLowerCase().replace(/[^a-z\u00e0-\u00ff]/g,'');
+    if(i>0 && CAP_MINUS.has(low) && w.indexOf('.')<0) return w.toLowerCase();
+    return capPalavra(w);
+  }).join(' ');
+}
+window.capNome = capNome;
+/* Campos que sao nome proprio ou endereco. E-mail, PIX, CPF, banco, agencia,
+   conta, CBO e matricula ficam de fora de proposito: nao sao nome. */
+const CAP_CAMPOS = new Set(['fc_nome','fc_funcao','fk_mae','fk_emerg','fk_log','fk_comp',
+  'fk_bai','fk_cid','fk_cargo','nvf_nome','nvf_funcao','pc_nome','pc_razao','pc_cnome',
+  'pc_ccargo','pc_end','nfNome','nrResp','acNome','pfNome','f-nome','f-cargo','bio-nome-aceite']);
+document.addEventListener('blur',e=>{
+  const el=e.target;
+  if(el && el.id && CAP_CAMPOS.has(el.id) && el.value) el.value=capNome(el.value);
+},true);
+
 /* --- helpers de formulário --- */
 const gv  = id => { const e=document.getElementById(id); return e?String(e.value).trim():''; };
 const gvn = id => gv(id)||null;
+const gvc = id => capNome(gv(id))||null;
 const gvi = id => { const v=gv(id); return v===''?null:parseInt(v,10); };
 const gvf = id => { const v=gv(id).replace(',','.'); return v===''?0:(parseFloat(v)||0); };
 const gvb = id => { const e=document.getElementById(id); return e?!!e.checked:false; };
@@ -2219,7 +2264,7 @@ function abrirNovoFuncionario(){
 }
 
 async function salvarNovoFuncionario(){
-  const nome=gv('nvf_nome');
+  const nome=capNome(gv('nvf_nome'));
   if(!nome) return toast('Preencha o nome');
   const tipo=gv('nvf_tipo')||'mensalista';
   const valor=parseBRL(gv('nvf_valor'));
@@ -2227,7 +2272,7 @@ async function salvarNovoFuncionario(){
   const btn=document.getElementById('nvfBtn'); if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
   try{
     const r=await db.ins('fin_funcionarios',[{
-      unidade:S.unidade, nome, funcao:gvn('nvf_funcao'), setor:gv('nvf_setor')||'Administrativo',
+      unidade:S.unidade, nome, funcao:gvc('nvf_funcao'), setor:gv('nvf_setor')||'Administrativo',
       tipo, salario_cents:tipo==='mensalista'?valor:0, valor_hora_cents:tipo==='horista'?valor:0,
       vt_cents:parseBRL(gv('nvf_vt')), ifood_cents:parseBRL(gv('nvf_ifood')),
       plano_saude_cents:parseBRL(gv('nvf_plano')),
@@ -2400,17 +2445,17 @@ function histFuncHTML(f,ev){
 }
 
 async function salvarFicha(id){
-  const nome=gv('fc_nome');
+  const nome=capNome(gv('fc_nome'));
   if(document.getElementById('fc_nome') && !nome) return toast('O nome não pode ficar vazio');
   const body={funcionario_id:id,
     cpf:gvn('fk_cpf'), rg:gvn('fk_rg'), rg_emissor:gvn('fk_rgem'), pis_pasep:gvn('fk_pis'),
     ctps_numero:gvn('fk_ctpsn'), ctps_serie:gvn('fk_ctpss'), data_nascimento:gvn('fk_nasc'),
-    estado_civil:gvn('fk_ec'), nome_mae:gvn('fk_mae'),
-    email:gvn('fk_email'), telefone:gvn('fk_tel'), contato_emergencia:gvn('fk_emerg'),
-    cep:gvn('fk_cep'), logradouro:gvn('fk_log'), numero:gvn('fk_num'), complemento:gvn('fk_comp'),
-    bairro:gvn('fk_bai'), cidade:gvn('fk_cid'), uf:(gvn('fk_uf')||'').toUpperCase()||null,
+    estado_civil:gvn('fk_ec'), nome_mae:gvc('fk_mae'),
+    email:gvn('fk_email'), telefone:gvn('fk_tel'), contato_emergencia:gvc('fk_emerg'),
+    cep:gvn('fk_cep'), logradouro:gvc('fk_log'), numero:gvn('fk_num'), complemento:gvc('fk_comp'),
+    bairro:gvc('fk_bai'), cidade:gvc('fk_cid'), uf:(gvn('fk_uf')||'').toUpperCase()||null,
     banco:gvn('fk_banco'), agencia:gvn('fk_ag'), conta:gvn('fk_conta'), chave_pix:gvn('fk_pix'),
-    matricula:gvn('fk_mat'), cargo_ctps:gvn('fk_cargo'), cbo:gvn('fk_cbo'), regime:gv('fk_reg')||'clt',
+    matricula:gvn('fk_mat'), cargo_ctps:gvc('fk_cargo'), cbo:gvn('fk_cbo'), regime:gv('fk_reg')||'clt',
     admissao:gvn('fk_adm'), fim_experiencia:gvn('fk_exp'),
     jornada_semanal_horas:gvf('fk_jor')||44,
     demissao:gvn('fk_dem'), motivo_desligamento:gvn('fk_motivo'), obs:gvn('fk_obs'),
@@ -2420,7 +2465,7 @@ async function salvarFicha(id){
     if(document.getElementById('fc_nome')){
       await db.upd('fin_funcionarios','id=eq.'+id,{
         nome, setor:gv('fc_setor')||'Administrativo',
-        funcao:gvn('fc_funcao'), tipo:gv('fc_tipo')||'mensalista'
+        funcao:gvc('fc_funcao'), tipo:gv('fc_tipo')||'mensalista'
       });
     }
     await db.upsert('fin_func_ficha',[body],'funcionario_id');
@@ -2785,9 +2830,9 @@ function pcForm(p,novo){
 }
 async function salvarPc(id){
   const q='pc_';
-  const body={unidade:S.unidade,nome:gv(q+'nome'),tipo:gv(q+'tipo'),razao_social:gvn(q+'razao'),
-    cnpj:gvn(q+'cnpj'),contato_nome:gvn(q+'cnome'),contato_cargo:gvn(q+'ccargo'),
-    contato_email:gvn(q+'cemail'),contato_telefone:gvn(q+'ctel'),endereco:gvn(q+'end'),
+  const body={unidade:S.unidade,nome:capNome(gv(q+'nome')),tipo:gv(q+'tipo'),razao_social:gvc(q+'razao'),
+    cnpj:gvn(q+'cnpj'),contato_nome:gvc(q+'cnome'),contato_cargo:gvc(q+'ccargo'),
+    contato_email:gvn(q+'cemail'),contato_telefone:gvn(q+'ctel'),endereco:gvc(q+'end'),
     crm_empresa_id:gvi(q+'crm'),obs:gvn(q+'obs'),updated_at:new Date().toISOString()};
   if(!body.nome) return toast('Informe o nome da parceira');
   try{
@@ -2995,7 +3040,7 @@ function removerFotoPerfil(){
   pintaAvatar(document.getElementById('pfAvatar'),null,gv('pfNome')||S.nome,S.email);
 }
 async function salvarPerfil(){
-  const nome=gv('pfNome');
+  const nome=capNome(gv('pfNome'));
   if(!nome) return toast('Informe o nome');
   try{
     const r=await db.rpc('fin_perfil_salvar',{p_nome:nome,p_telefone:gv('pfTel'),p_avatar:perfilAvatar});
@@ -3103,7 +3148,7 @@ function abrirAcesso(id){
 }
 
 async function salvarAcesso(id){
-  const nome=gv('acNome'), role=gv('acRole'), aprov=gv('acAprov')==='1', tel=gv('acTel');
+  const nome=capNome(gv('acNome')), role=gv('acRole'), aprov=gv('acAprov')==='1', tel=gv('acTel');
   try{
     let r;
     if(!id){
@@ -3496,8 +3541,8 @@ $('dlg-pessoa-salvar').onclick = async () => {
   let novoId = null;
 
   const dados = {
-    nome: nome.toUpperCase(), cpf,
-    cargo: $('f-cargo').value.trim() || null,
+    nome: window.capNome(nome), cpf,
+    cargo: window.capNome($('f-cargo').value) || null,
     email: email || null,
     admissao: $('f-admissao').value,
     escala_sabado: $('f-sabado').value || null,
@@ -3650,7 +3695,7 @@ $('bio-consentir').onclick = async () => {
     empregado_id: BIO.emp,
     versao: TERMO.versao,
     aceito: true,
-    aceito_por_nome: $('bio-nome-aceite').value.trim().toUpperCase(),
+    aceito_por_nome: window.capNome($('bio-nome-aceite').value),
     testemunha_id: EU?.id ?? null,
     user_agent: navigator.userAgent,
   }));
