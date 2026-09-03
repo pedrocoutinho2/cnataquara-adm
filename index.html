@@ -520,9 +520,18 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .formRow{display:grid;grid-template-columns:2fr 1.4fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px}
 .formRow .field{margin:0}
-.mini{width:112px}
+.mini{width:112px;max-width:100%}
 input.mini,input.mini2{text-align:right}
-.mini2{width:72px}
+.mini2{width:72px;max-width:100%}
+/* Tabela da folha: 11 colunas nao cabem com largura fixa. Aqui os campos
+   acompanham a coluna em vez de estourar e cortar. */
+table.tFolha{table-layout:auto}
+table.tFolha td,table.tFolha th{padding:7px 6px}
+table.tFolha .mini{width:100%;min-width:74px}
+table.tFolha .mini2{width:100%;min-width:52px}
+table.tFolha .selInp,table.tFolha .txtInp{width:100%;min-width:0}
+table.tFolha td.num{white-space:normal}
+table.tFolha .hint{white-space:normal;line-height:1.25}
 .dateInp{width:150px;text-align:left!important}
 .txtInp{width:100%;min-width:110px;text-align:left!important}
 .selInp{width:100%;min-width:120px}
@@ -1367,6 +1376,63 @@ function horasDe(f,r){
   return +(r&&r.horas||0);
 }
 function fmtH(h){ return (Math.round((+h||0)*100)/100).toFixed(2).replace('.',','); }
+/* ---- Calendario: dias uteis e dias de descanso do mes ----
+   Base legal do DSR sobre comissao: Lei 605/49 art. 7 e Sumula 27 do TST.
+   Dias uteis = todos os dias do mes menos domingos e feriados (sabado conta
+   como dia util). Dias de descanso = domingos + feriados.
+   Ponto facultativo (segunda de carnaval, Corpus Christi) NAO entra, seguindo
+   a mesma classificacao ja usada na tabela de feriados do ponto. */
+function pascoa(ano){
+  const a=ano%19, b=Math.floor(ano/100), c=ano%100;
+  const d=Math.floor(b/4), e=b%4, f=Math.floor((b+8)/25);
+  const g=Math.floor((b-f+1)/3), h=(19*a+b-d-g+15)%30;
+  const i=Math.floor(c/4), k=c%4, l=(32+2*e+2*i-h-k)%7;
+  const m=Math.floor((a+11*h+22*l)/451);
+  const mes=Math.floor((h+l-7*m+114)/31), dia=((h+l-7*m+114)%31)+1;
+  return new Date(Date.UTC(ano,mes-1,dia));
+}
+function isoUTC(d){ return d.toISOString().slice(0,10); }
+function addDias(d,n){ const x=new Date(d.getTime()); x.setUTCDate(x.getUTCDate()+n); return x; }
+/* Nacionais + estaduais RJ + municipais Rio. Facultativos ficam de fora. */
+function feriadosAno(ano){
+  const pa=pascoa(ano);
+  const f={};
+  const fix=[['01-01','Confraternização Universal'],['01-20','São Sebastião'],
+    ['04-21','Tiradentes'],['04-23','São Jorge'],['05-01','Dia do Trabalho'],
+    ['09-07','Independência'],['10-12','Nossa Senhora Aparecida'],
+    ['11-02','Finados'],['11-15','Proclamação da República'],
+    ['11-20','Consciência Negra'],['12-25','Natal']];
+  fix.forEach(x=>{ f[ano+'-'+x[0]]=x[1]; });
+  f[isoUTC(addDias(pa,-2))]='Sexta-feira Santa';
+  f[isoUTC(addDias(pa,-47))]='Carnaval';
+  return f;
+}
+function calendarioComp(comp){
+  const [ano,mes]=String(comp||'').split('-').map(Number);
+  if(!ano||!mes) return {uteis:25,descanso:5,feriados:[],auto:false};
+  const fer=feriadosAno(ano);
+  const ultimo=new Date(Date.UTC(ano,mes,0)).getUTCDate();
+  let uteis=0, descanso=0; const lista=[];
+  for(let d=1;d<=ultimo;d++){
+    const dt=new Date(Date.UTC(ano,mes-1,d)), iso=isoUTC(dt);
+    const dom=dt.getUTCDay()===0, nome=fer[iso];
+    if(nome) lista.push({data:iso,nome:nome});
+    if(dom||nome) descanso++; else uteis++;
+  }
+  return {uteis:uteis,descanso:descanso,feriados:lista,auto:true};
+}
+function dsrDoMes(){
+  const _d=(S.cfg||{}).dsr||{};
+  const cal=calendarioComp(S.comp);
+  const mu=(_d.dias_uteis!=null&&_d.dias_uteis!=='')?+_d.dias_uteis:null;
+  const md=(_d.dias_descanso!=null&&_d.dias_descanso!=='')?+_d.dias_descanso:null;
+  return {
+    dias_uteis: mu||cal.uteis,
+    dias_descanso: (md!=null?md:cal.descanso),
+    manual: (mu!=null||md!=null),
+    cal: cal
+  };
+}
 function calcINSS(brutoCents){
   const faixas=S.cfg.inss_faixas||[];
   let inss=0, prev=0;
@@ -1400,8 +1466,8 @@ function comissaoDe(f,r,todos,rows){
   }
 }
 function calcRow(f,r,todos,rows){
-  const cfg=S.cfg, _d=cfg.dsr||{};
-  const dsrCfg={dias_uteis:(+_d.dias_uteis||+_d.dias_trabalhados||26),dias_descanso:(+_d.dias_descanso||5)};
+  const cfg=S.cfg;
+  const dsrCfg=dsrDoMes();
   const prov=cfg.provisoes||{ferias_divisor:9,decimo_divisor:12};
   let base=0, comissao=0, dsr=0;
   if(f.tipo==='mensalista'){
@@ -1629,7 +1695,7 @@ function drawFolha(el,fechada){
       <td><b>${esc(f.nome)}</b><div class="hint">${esc(f.funcao||'')}</div></td>
       <td class="num">${producao}</td>
       <td class="num">${fmt(k.salario_base_cents)}</td>
-      <td class="num">${prof?'—':`<input class="mini money" ${dis} value="${(r.comissao_manual_cents!=null&&r.comissao_manual_cents!=='')?moneyVal(r.comissao_manual_cents):''}" placeholder="${moneyVal(k.comissao_cents)}" title="Vazio usa o cálculo automático" onchange="fComissao(${f.id},this.value)">${k.dsr_cents?`<div class="hint">DSR ${fmt(k.dsr_cents)}</div>`:''}${(r.comissao_manual_cents!=null&&r.comissao_manual_cents!=='')?'<div class="hint">manual</div>':''}`}</td>
+      <td class="num">${prof?'—':`<input class="mini money" ${dis} value="${moneyVal(k.comissao_cents)}" title="Apagar volta ao cálculo automático" onchange="fComissao(${f.id},this.value)">${k.dsr_cents?`<div class="hint">DSR ${fmt(k.dsr_cents)}</div>`:''}<div class="hint">${(r.comissao_manual_cents!=null&&r.comissao_manual_cents!=='')?'manual':'automático'}</div>`}</td>
       <td class="num">${k.vt_desconto_cents?fmt(k.vt_desconto_cents):'—'}</td>
       <td class="num">${f.ifood_cents?fmt(f.ifood_cents):'—'}</td>
       <td class="num">${f.plano_saude_cents?fmt(f.plano_saude_cents):'—'}</td>
@@ -1667,7 +1733,7 @@ function drawFolha(el,fechada){
     if(!lista.length) return '';
     return `<div class="panel"><div class="panelHead"><h2>${setor}</h2>
       <span class="hint">${lista.length} ${lista.length===1?'pessoa':'pessoas'}</span></div>
-      <div class="tableWrap"><table>${head}<tbody>${lista.map(rowHTML).join('')}</tbody></table></div></div>`;
+      <div class="tableWrap"><table class="tFolha">${head}<tbody>${lista.map(rowHTML).join('')}</tbody></table></div></div>`;
   }).join('');
 
   el.innerHTML=`
@@ -1694,7 +1760,6 @@ function drawFolha(el,fechada){
       <button class="btn" onclick="addFunc()">Salvar</button>
     </div>
   </div>`:''}
-  ${blocos}
   <div class="cards">
     <div class="card"><small>Total líquido (salários)</small><div class="v red">${fmt(totL)}</div><div class="d">a pagar dia 5 do mês seguinte</div></div>
     <div class="card"><small>iFood</small><div class="v">${fmt(totI)}</div></div>
@@ -1704,6 +1769,7 @@ function drawFolha(el,fechada){
     <div class="card"><small>Provisões férias + 13º</small><div class="v blue">${fmt(totProv)}</div><div class="d">não-caixa</div></div>
     <div class="card"><small>Custo total da folha</small><div class="v">${fmt(totC)}</div></div>
   </div>
+  ${blocos}
   <div class="panel" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <button class="btn sec" onclick="salvarFolha(false)" ${fechada?'disabled':''}>Salvar rascunho</button>
     <button class="btn" onclick="salvarFolha(true)" ${fechada?'disabled':''}>Fechar folha e lançar no contas a pagar</button>
@@ -1712,6 +1778,10 @@ function drawFolha(el,fechada){
 }
 function painelParametros(){
   const cfg=S.cfg;
+  const d=dsrDoMes();
+  const ferTxt=d.cal.feriados.length
+    ? d.cal.feriados.map(x=>`${x.data.slice(8,10)}/${x.data.slice(5,7)} ${x.nome}`).join(' · ')
+    : 'nenhum feriado neste mês';
   return `
   <div class="panel"><h2>Parâmetros de cálculo</h2>
   <div class="grid3">
@@ -1719,11 +1789,13 @@ function painelParametros(){
       <input id="cfComMat" class="money" value="${moneyVal(comMatCents())}"></div>
     <div class="field"><label>Comissão por pagamento (R$)</label>
       <input id="cfComPag" class="money" value="${moneyVal(comPagCents())}"></div>
-    <div class="field"><label>DSR: dias úteis</label><input id="cfDU" type="number" value="${(cfg.dsr||{}).dias_uteis||26}"></div>
-    <div class="field"><label>DSR: dias de descanso</label><input id="cfDD" type="number" value="${(cfg.dsr||{}).dias_descanso||5}"></div>
+    <div class="field"><label>DSR: dias úteis</label><input id="cfDU" type="number" placeholder="${d.cal.uteis} (automático)" value="${(cfg.dsr||{}).dias_uteis!=null&&(cfg.dsr||{}).dias_uteis!==''?(cfg.dsr||{}).dias_uteis:''}"></div>
+    <div class="field"><label>DSR: dias de descanso</label><input id="cfDD" type="number" placeholder="${d.cal.descanso} (automático)" value="${(cfg.dsr||{}).dias_descanso!=null&&(cfg.dsr||{}).dias_descanso!==''?(cfg.dsr||{}).dias_descanso:''}"></div>
     <div class="field"><label>Alíquota efetiva Simples (%)</label><input id="cfAliq" value="${(((cfg.simples||{}).aliquota_efetiva||0)*100).toFixed(4).replace('.',',')}"></div>
     <div class="field"><label>Desconto de VT (%)</label><input id="cfVT" value="${(((cfg.vt_aliquota!=null?+cfg.vt_aliquota:0.06))*100).toFixed(2).replace('.',',')}"></div>
   </div>
+  <p class="hint" style="margin:8px 0 12px"><b>Calendário de ${compLabel(S.comp)}:</b> ${d.cal.uteis} dias úteis e ${d.cal.descanso} de descanso (domingos + feriados). ${esc(ferTxt)}.
+    ${d.manual?`<b style="color:var(--redDark)">Em uso agora: ${d.dias_uteis} úteis e ${d.dias_descanso} de descanso, digitados à mão.</b> Apague os dois campos para voltar ao automático.`:'Os dois campos abaixo estão em automático: o cálculo acompanha o mês sozinho. Preencher um deles congela o valor para todos os meses.'}</p>
   <p class="hint" style="margin:8px 0 12px">A comissão por matrícula vale para o Comercial e é a base dos 50% da Coordenação. A comissão por pagamento vale para o Administrativo. Na tabela da folha, digitar um valor na coluna Comissão sobrepõe o cálculo automático daquela pessoa; apagar volta ao automático. O vale transporte é descontado sobre salário + comissão, só de quem tem VT cadastrado. O INSS não entra na folha: é recolhido por guia depois. Provisão de férias em 1/9 (férias + terço).</p>
   <button class="btn" onclick="salvaCfg()">Salvar parâmetros</button></div>`;
 }
@@ -1757,7 +1829,7 @@ async function exportarFolhaPDF(){
   const u=UNIDADES.find(x=>x.id===S.unidade);
   document.getElementById('printTitle').textContent=`${u.nome} · Folha de pagamento · ${compLabel(S.comp)}`;
   const {funcs,rows}=folhaData;
-  let tLiq=0,tAd=0,tVale=0,tPlano=0,tCom=0,tBase=0;
+  let tLiq=0,tAd=0,tVale=0,tPlano=0,tCom=0,tBase=0,tVt=0;
   const linhas=SETORES.map(setor=>{
     const lista=(funcs||[]).filter(f=>(f.setor||'Administrativo')===setor);
     if(!lista.length) return '';
@@ -1765,7 +1837,7 @@ async function exportarFolhaPDF(){
       const r=rows[f.id]||{}, k=calcRow(f,r,funcs,rows);
       const ad=r.adiantamento_cents||0, vale=r.desconto_vale_cents||0, plano=f.plano_saude_cents||0;
       tLiq+=k.liquido_contador_cents; tAd+=ad; tVale+=vale; tPlano+=plano;
-      tCom+=k.comissao_cents; tBase+=k.salario_base_cents;
+      tCom+=k.comissao_cents; tBase+=k.salario_base_cents; tVt+=(f.vt_cents||0);
       return `<tr>
         <td>${esc(f.nome)}<div class="pf-sub">${esc(f.funcao||'')}</div></td>
         <td class="pf-n">${f.tipo==='horista'?fmtH(horasDe(f,r))+' h':'—'}</td>
@@ -1774,7 +1846,7 @@ async function exportarFolhaPDF(){
         <td class="pf-n">${ad?fmt(ad):'—'}</td>
         <td class="pf-n">${vale?fmt(vale):'—'}</td>
         <td class="pf-n">${plano?fmt(plano):'—'}</td>
-        <td class="pf-c">${f.vt_cents>0?'Sim':'Não'}</td>
+        <td class="pf-c">${f.vt_cents>0?`Sim<div class="pf-sub">${fmt(f.vt_cents)} · desc. ${fmt(k.vt_desconto_cents)}</div>`:'Não'}</td>
         <td class="pf-n"><b>${fmt(k.liquido_contador_cents)}</b></td></tr>`;
     }).join('');
     return `<tr class="pf-sec"><td colspan="9">${esc(setor)}</td></tr>`+corpo;
@@ -1785,13 +1857,13 @@ async function exportarFolhaPDF(){
       <thead><tr>
         <th>Funcionário</th><th class="pf-n">Horas</th><th class="pf-n">Salário base</th>
         <th class="pf-n">Comissão</th><th class="pf-n">Adiantamento</th><th class="pf-n">Desc. vale</th>
-        <th class="pf-n">Plano de saúde</th><th class="pf-c">VT</th><th class="pf-n">Líquido</th>
+        <th class="pf-n">Plano de saúde</th><th class="pf-c">VT (carga · desconto)</th><th class="pf-n">Líquido</th>
       </tr></thead>
       <tbody>${linhas}
         <tr class="pf-tot"><td>Total</td><td class="pf-n"></td>
           <td class="pf-n">${fmt(tBase)}</td><td class="pf-n">${fmt(tCom)}</td>
           <td class="pf-n">${fmt(tAd)}</td><td class="pf-n">${fmt(tVale)}</td>
-          <td class="pf-n">${fmt(tPlano)}</td><td class="pf-c"></td>
+          <td class="pf-n">${fmt(tPlano)}</td><td class="pf-c">${fmt(tVt)}</td>
           <td class="pf-n">${fmt(tLiq)}</td></tr>
       </tbody></table>
     <p class="pf-obs">Valores sem DSR e sem o desconto de vale transporte. O INSS é recolhido por guia, fora da folha.
@@ -2013,7 +2085,8 @@ async function addFunc(){
 async function salvaCfg(){
   const vtAliq=(parseFloat(String(cfVT.value).replace(',','.'))||0)/100;
   if(vtAliq<0||vtAliq>0.5) return toast('Percentual de VT fora do razoável');
-  const dsr={dias_uteis:+cfDU.value||25,dias_descanso:+cfDD.value||5};
+  const _du=String(cfDU.value).trim(), _dd=String(cfDD.value).trim();
+  const dsr={dias_uteis:(_du===''?null:+_du||null),dias_descanso:(_dd===''?null:+_dd)};
   const simples={...(S.cfg.simples||{}),aliquota_efetiva:(parseFloat(String(cfAliq.value).replace(',','.'))||0)/100};
   const comMat={valor_cents:parseBRL(cfComMat.value)};
   const comPag={...(S.cfg.comissao_pagamento||{}),valor_cents:parseBRL(cfComPag.value)};
