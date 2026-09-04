@@ -231,6 +231,35 @@
   text-transform:uppercase; color:var(--cinza); text-align:center}#pontoWrap .semana .quem{font-size:14px; padding-right:10px}#pontoWrap .cel{height:40px; display:grid; place-items:center; font-family:var(--display); font-weight:500;
   font-size:13px; border:1px solid var(--linha); background:var(--branco); border-radius:6px;
   font-variant-numeric:tabular-nums}
+#pontoWrap .grafico{background:var(--branco); border:1px solid var(--linha); border-radius:var(--raio);
+  padding:18px 18px 14px}
+#pontoWrap .grafico svg{display:block; width:100%; height:auto}
+#pontoWrap .legenda{display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:12.5px; color:var(--cinza)}
+#pontoWrap .legenda i{display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px;
+  vertical-align:-1px}
+#pontoWrap .semana2{display:grid; grid-template-columns:150px repeat(6,1fr); gap:5px; align-items:stretch}
+#pontoWrap .semana2 .cab{font-family:var(--display); font-size:10px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--cinza); text-align:center; align-self:end; padding-bottom:4px}
+#pontoWrap .semana2 .quem{font-size:13.5px; display:flex; align-items:center; padding-right:10px}
+#pontoWrap .cel2{min-height:52px; display:grid; place-items:center; align-content:center; gap:1px;
+  border:1px solid var(--linha); background:var(--branco); border-radius:6px; padding:4px 2px}
+#pontoWrap .cel2 b{font-family:var(--display); font-size:15px; font-weight:600; font-variant-numeric:tabular-nums}
+#pontoWrap .cel2 span{font-size:11px; color:var(--cinza); font-variant-numeric:tabular-nums}
+#pontoWrap .cel2.n0{background:var(--superficie)}
+#pontoWrap .cel2.n1{background:#FDF3F5; border-color:#F6DDE3}
+#pontoWrap .cel2.n2{background:var(--rosa); border-color:var(--linha-perigo); color:var(--vermelho-escuro)}
+#pontoWrap .cel2.n3{background:var(--vermelho); border-color:var(--vermelho); color:var(--branco)}
+#pontoWrap .cel2.n3 span{color:rgba(255,255,255,.82)}
+#pontoWrap .leitura{background:var(--azul-claro); border:1px solid #D5E1F3; border-radius:var(--raio);
+  padding:14px 16px; font-size:14px; line-height:1.6; color:var(--tinta); margin-bottom:16px}
+#pontoWrap .atalhos{display:flex; gap:7px; flex-wrap:wrap}
+#pontoWrap .atalhos button{padding:7px 13px; font-size:13px; min-height:0}
+@media (max-width:760px){
+  #pontoWrap .semana2{grid-template-columns:96px repeat(6,1fr); gap:3px}
+  #pontoWrap .semana2 .quem{font-size:12px}
+  #pontoWrap .cel2 b{font-size:13px} #pontoWrap .cel2 span{font-size:10px}
+  #pontoWrap .grafico{padding:14px 12px 10px}
+}
 
 /* Este <style> carrega depois do cna.css, entao qualquer largura declarada
    aqui fora de media query vence a folha inferior do mobile. Era o que
@@ -865,9 +894,39 @@ table.tFolha .hint{white-space:normal;line-height:1.25}
   <div class="filtros">
     <label class="campo"><span>De</span><input type="date" id="r-ini"></label>
     <label class="campo"><span>Até</span><input type="date" id="r-fim"></label>
+    <div class="atalhos">
+      <button class="leve" data-periodo="mes">Este mês</button>
+      <button class="leve" data-periodo="anterior">Mês passado</button>
+      <button class="leve" data-periodo="30">Últimos 30 dias</button>
+    </div>
   </div>
+
+  <div id="r-kpis" class="indicadores"></div>
+
+  <h2 class="secao">Cumprimento da jornada</h2>
+  <div class="grafico" id="g-horas"></div>
+
+  <h2 class="secao">Saldo do período</h2>
+  <div class="grafico" id="g-saldo"></div>
+
+  <h2 class="secao">Onde o atraso se concentra</h2>
+  <div class="leitura" id="r-leitura"></div>
+  <div class="grafico">
+    <div class="semana2" id="mapa-semana"></div>
+    <div class="legenda">
+      <span><i style="background:var(--superficie);border:1px solid var(--linha)"></i>sem atraso</span>
+      <span><i style="background:#FDF3F5;border:1px solid #F6DDE3"></i>até 1 em 4</span>
+      <span><i style="background:var(--rosa);border:1px solid var(--linha-perigo)"></i>1 em 4 a 1 em 2</span>
+      <span><i style="background:var(--vermelho)"></i>metade dos dias ou mais</span>
+    </div>
+    <p class="nota" style="margin:14px 0 0;border:0;padding:0;max-width:70ch">O número grande é a
+      fatia dos dias trabalhados naquele dia da semana em que a pessoa chegou atrasada. Embaixo,
+      quantas vezes sobre quantos dias. Atraso espalhado é acidente; atraso concentrado num dia
+      é padrão, e padrão se resolve com conversa, não com desconto.</p>
+  </div>
+
+  <h2 class="secao">Resumo por pessoa</h2>
   <table class="responsiva">
-    <caption>Resumo do período</caption>
     <thead><tr>
       <th>Pessoa</th><th class="n">Dias prev.</th><th class="n">Trabalhados</th>
       <th class="n">Faltas</th><th class="n">Atrasos</th><th class="n">Min. atraso</th>
@@ -875,14 +934,6 @@ table.tFolha .hint{white-space:normal;line-height:1.25}
     </tr></thead>
     <tbody id="t-resumo"></tbody>
   </table>
-
-  <h2 class="secao">Atraso por dia da semana</h2>
-  <p class="nota" style="margin-bottom:14px;max-width:66ch;border:0;padding:0">
-    Cada célula mostra quantas vezes a pessoa chegou atrasada naquele dia, sobre quantos
-    dias ela deveria ter trabalhado. Atraso espalhado é acidente. Atraso concentrado num
-    dia só é padrão, e padrão se resolve com conversa, não com desconto.
-  </p>
-  <div class="semana" id="mapa-semana"></div>
 
   <h2 class="secao">Faltas e ausências</h2>
   <table class="responsiva">
@@ -1074,6 +1125,12 @@ table.tFolha .hint{white-space:normal;line-height:1.25}
       </select>
     </label>
     <label class="campo" id="a-wrap-hora"><span>Horário</span><input type="time" id="a-hora"></label>
+    <label class="campo" id="a-wrap-dias" hidden><span>Quantos dias de atestado</span>
+      <input type="number" id="a-dias" step="1" min="1" max="180" value="1"></label>
+    <p class="nota" id="a-dica-atestado" hidden style="margin:-8px 0 16px">Contados em dias
+      corridos a partir do dia escolhido. Cada dia com expediente é abonado pela carga
+      prevista dele; folga, feriado e sábado fora da escala são pulados sem consumir o
+      atestado.</p>
     <label class="campo" id="a-wrap-min" hidden><span>Minutos</span><input type="number" id="a-min" step="5" min="0" max="1440"></label>
     <label class="campo"><span>Justificativa</span>
       <textarea id="a-just" placeholder="Por que este ajuste está sendo feito. Fica registrado com seu nome."></textarea>
@@ -2944,7 +3001,7 @@ async function vPonto(el){
   <div class="panel">
     <div class="panelHead"><h2>Espelho de ${compLabel(c)}</h2>
       ${fechado?'<span class="badge pago">Fechado</span>':''}
-      <button class="btn sm sec" disabled title="Disponível quando o REP-A entrar em produção">Importar do REP-A</button>
+      <button class="btn sm sec" onclick="puxarDoRep()" id="btnPuxaRep">Puxar do REP-A</button>
       ${fechado?`<button class="btn sm sec" onclick="reabrirEspelho()">Reabrir</button>`
                :`<button class="btn sm sec" onclick="salvarEspelho(false)">Salvar</button>
                  <button class="btn sm" onclick="salvarEspelho(true)">Salvar e fechar</button>`}</div>
@@ -2961,19 +3018,71 @@ async function vPonto(el){
         <td class="num"><input class="mini2" id="pt_bh_${f.id}" value="${e.saldo_banco_horas!=null?e.saldo_banco_horas:''}" ${ro}></td>
       </tr>`; }).join('')}
     </tbody></table>
-    <p class="hint" style="margin-top:10px">Professores não entram aqui. As horas deles continuam sendo lançadas direto na Folha de pagamento.</p>
+    <p class="hint" id="pt_status" style="margin-top:10px">Clique em <b>Puxar do REP-A</b> para preencher a partir das batidas de ponto. O que vier do relógio fica marcado; qualquer campo que você editar depois passa a valer por cima.</p>
+    <p class="hint">Professores não entram aqui. As horas deles continuam sendo lançadas direto na Folha de pagamento.</p>
     <p class="hint">O registro legal de ponto fica no REP-A e não é alterado por esta tela. Aqui fica a consolidação do mês usada para conferir a folha. Fechar o espelho congela a competência.</p>
   </div>`;
 }
+/* Preenchimento automatico a partir do REP-A. O vinculo e por
+   fin_funcionarios.ponto_empregado_id: casar por nome nao serve, porque na
+   folha e "Natany Rodrigues" e no ponto e "Natanny". */
+const PT_CAMPOS = [['dp','dias_previstos'],['dt','dias_trabalhados'],['h','horas_trabalhadas'],
+                   ['he','horas_extras'],['fa','faltas_dias'],['at','atrasos_minutos'],
+                   ['bh','saldo_banco_horas']];
+
+async function puxarDoRep(){
+  const btn=document.getElementById('btnPuxaRep'); const st=document.getElementById('pt_status');
+  if(!window.PONTO){ toast('O módulo do ponto não carregou. Recarregue a página.'); return; }
+  btn.disabled=true; btn.textContent='Puxando…';
+  try{
+    const ap=await window.PONTO.apuracao(S.comp);
+    if(!ap){ st.innerHTML='<b>Entre no ponto primeiro.</b> Abra qualquer aba de Ponto eletrônico no menu, faça o login e volte aqui.'; return; }
+    const porEmp={}; ap.forEach(a=>porEmp[a.empregado_id]=a);
+    const funcs=await db.get('fin_funcionarios',`unidade=eq.${S.unidade}&ativo=eq.true&setor=neq.Professores&select=id,nome,ponto_empregado_id`);
+    let n=0; const sem=[]; let pend=0;
+    funcs.forEach(f=>{
+      const a=f.ponto_empregado_id?porEmp[f.ponto_empregado_id]:null;
+      if(!a){ sem.push(f.nome); return; }
+      PT_CAMPOS.forEach(([sufixo,campo])=>{
+        const el=document.getElementById('pt_'+sufixo+'_'+f.id);
+        if(!el||el.disabled) return;
+        el.value=String(a[campo]??0).replace('.',',');
+        el.dataset.auto='1';
+        el.style.background='var(--pastelBlue)';
+      });
+      pend+=Number(a.pendencias||0); n++;
+    });
+    const partes=[`<b>${n} pessoa(s) preenchida(s)</b> a partir do relógio de ponto.`];
+    if(sem.length) partes.push(`Sem cadastro no REP-A, preencha à mão: ${sem.map(esc).join(', ')}.`);
+    if(pend) partes.push(`<b style="color:var(--redDark)">${pend} dia(s) com pendência</b> na apuração — confira o espelho antes de fechar.`);
+    partes.push('Campo em azul veio do relógio. Editar um campo faz o valor manual valer por cima.');
+    st.innerHTML=partes.join(' ');
+    toast(n?`${n} pessoa(s) preenchida(s)`:'Ninguém vinculado ao REP-A');
+  }catch(e){ st.innerHTML=`<b style="color:var(--redDark)">Não consegui puxar:</b> ${esc(e.message)}`; }
+  finally{ btn.disabled=false; btn.textContent='Puxar do REP-A'; }
+}
+
+/* Digitou por cima, virou manual. E o que permite auditar depois de onde
+   cada numero veio sem ter que confiar na memoria de quem fechou. */
+document.addEventListener('input',(ev)=>{
+  const el=ev.target;
+  if(el && el.id && el.id.startsWith('pt_') && el.dataset.auto==='1'){
+    el.dataset.auto='0'; el.style.background='';
+  }
+});
+
 async function salvarEspelho(fechar){
   const funcs=await db.get('fin_funcionarios',`unidade=eq.${S.unidade}&ativo=eq.true&setor=neq.Professores&select=id`);
   const num=id=>{ const v=gv(id); return v===''?0:(parseFloat(v.replace(',','.'))||0); };
+  const auto=id=>document.getElementById(id)?.dataset.auto==='1';
   const rows=funcs.map(f=>({unidade:S.unidade,competencia:S.comp,funcionario_id:f.id,
     dias_previstos:num('pt_dp_'+f.id),dias_trabalhados:num('pt_dt_'+f.id),
     horas_trabalhadas:num('pt_h_'+f.id),horas_extras:num('pt_he_'+f.id),
     faltas_dias:num('pt_fa_'+f.id),atrasos_minutos:Math.round(num('pt_at_'+f.id)),
-    saldo_banco_horas:num('pt_bh_'+f.id),origem:'manual',fechado:!!fechar,
-    importado_em:new Date().toISOString()}));
+    saldo_banco_horas:num('pt_bh_'+f.id),
+    // origem 'rep_a' so quando NENHUM campo daquela linha foi digitado por cima
+    origem:PT_CAMPOS.every(([sfx])=>auto('pt_'+sfx+'_'+f.id))?'rep_a':'manual',
+    fechado:!!fechar,importado_em:new Date().toISOString()}));
   try{
     await db.upsert('fin_ponto_espelho',rows,'unidade,competencia,funcionario_id');
     toast(fechar?'Espelho fechado':'Espelho salvo'); render();
@@ -3449,7 +3558,7 @@ function bioCel(e){
 
 async function carregarEquipe(){
   const { data, error } = await P.from('empregados')
-    .select('id,nome,cpf,cargo,email,auth_user_id,admissao,demissao,ativo,escala_sabado')
+    .select('id,nome,cpf,cargo,email,auth_user_id,admissao,demissao,ativo,escala_sabado,isento_ponto')
     .order('nome');
   if (error) return recado(traduzir(error.message), 'erro');
   EQUIPE = data ?? [];
@@ -3502,10 +3611,28 @@ async function carregarEquipe(){
     </tr>`).join('')
     : '<tr><td colspan="9" class="vazio">Nenhuma pessoa encontrada com esses filtros.</td></tr>';
 
+  preencherPessoas();
+}
+
+/* Quem e isento de controle de jornada (CLT art. 62, II) nao entra em espelho,
+   banco nem folha. Continua podendo bater ponto: o REP nunca bloqueia. */
+const comPonto = () => EQUIPE.filter(e => e.ativo && !e.isento_ponto);
+
+function preencherPessoas(){
   const sel = $('e-pessoa'), atual = sel.value;
-  sel.innerHTML = EQUIPE.filter(e => e.ativo)
-    .map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('');
-  if (atual && EQUIPE.some(e => e.id === atual && e.ativo)) sel.value = atual;
+  sel.innerHTML = comPonto().map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('');
+  if (atual && comPonto().some(e => e.id === atual)) sel.value = atual;
+}
+
+/* O espelho lia o seletor de pessoas que so era preenchido pela aba Equipe.
+   Quem entrava direto no Espelho via a tela vazia com "cadastre alguem". */
+async function garantirEquipe(){
+  if (EQUIPE.length) return;
+  const { data } = await P.from('empregados')
+    .select('id,nome,cpf,cargo,email,auth_user_id,admissao,demissao,ativo,escala_sabado,isento_ponto')
+    .order('nome');
+  EQUIPE = data ?? [];
+  preencherPessoas();
 }
 $('q-equipe').oninput = carregarEquipe;
 $('f-situacao').onchange = carregarEquipe;
@@ -3964,27 +4091,36 @@ $('t-terminais').onclick = async (ev) => {
 
 /* ===================== ESPELHO ===================== */
 async function carregarEspelho(){
+  await garantirEquipe();
   const emp = $('e-pessoa').value;
   if (!emp){
-    $('t-espelho').innerHTML = '<tr><td colspan="11" class="vazio">Cadastre alguém na aba Equipe primeiro.</td></tr>';
+    $('t-espelho').innerHTML = '<tr><td colspan="11" class="vazio">Nenhuma pessoa sujeita a controle de ponto. Cadastre alguém na aba Equipe.</td></tr>';
     $('e-indicadores').innerHTML = '';
     return;
   }
+  $('t-espelho').innerHTML = '<tr><td colspan="11" class="vazio">Montando o espelho do mês…</td></tr>';
   const [ini, fim] = periodoDoMes($('e-mes').value);
-  const { data, error } = await P.rpc('espelho', { p_emp:emp, p_ini:ini, p_fim:fim });
-  if (error) return recado(traduzir(error.message), 'erro');
-  const linhas = data ?? [];
+  const [esp, bco] = await Promise.all([
+    P.rpc('espelho', { p_emp:emp, p_ini:ini, p_fim:fim }),
+    P.rpc('banco_saldo_vivo', { p_emp:emp, p_ate:fim }),
+  ]);
+  if (esp.error){
+    $('t-espelho').innerHTML = '<tr><td colspan="11" class="vazio">Não consegui carregar o espelho.</td></tr>';
+    return recado(traduzir(esp.error.message), 'erro');
+  }
+  const linhas = esp.data ?? [];
+  const vivo = (bco.data ?? [])[0] ?? {};
+  const banco = vivo.total_min ?? 0;
 
   const conta = (f) => linhas.filter(f).length;
   const soma = (k) => linhas.reduce((a,l) => a + (l[k] ?? 0), 0);
-  const { data: banco } = await P.rpc('saldo_banco', { p_emp:emp, p_ate:fim });
 
   $('e-titulo').textContent = `Espelho de ponto — ${$('e-pessoa').selectedOptions[0].textContent}`;
   $('e-indicadores').innerHTML = `
     <div class="ind"><dt>Horas trabalhadas</dt><dd>${hm(soma('trabalhado_min'))}</dd>
       <p class="nota">previsto ${hm(soma('carga_prev_min'))}</p></div>
     <div class="ind"><dt>Saldo do mês</dt><dd class="${soma('saldo_min')>=0?'pos':'neg'}">${soma('saldo_min')>0?'+':''}${hm(soma('saldo_min'))}</dd>
-      <p class="nota">banco acumulado ${hm(banco)}</p></div>
+      <p class="nota">banco acumulado ${hm(banco)}${vivo.aberto_min ? ` · ${hm(vivo.aberto_min)} ainda não fechado` : ''}</p></div>
     <div class="ind"><dt>Atrasos</dt><dd>${conta(l=>l.atraso_min>0)}</dd>
       <p class="nota">${hm(soma('atraso_min'))} no total</p></div>
     <div class="ind"><dt>Faltas</dt><dd>${conta(l=>l.falta)}</dd>
@@ -4031,6 +4167,7 @@ $('t-espelho').onclick = async (ev) => {
   $('dlg-ajuste-contexto').textContent =
     `${$('e-pessoa').selectedOptions[0].textContent} · ${d.split('-').reverse().join('/')}`;
   $('a-just').value = ''; $('a-hora').value = ''; $('a-min').value = '';
+  $('a-dias').value = '1'; $('a-tipo').value = 'insercao'; $('a-tipo').onchange();
   $('dlg-ajuste-erro').textContent = '';
   await listarAjustesDoDia();
   $('dlg-ajuste').showModal();
@@ -4069,8 +4206,10 @@ $('ajustes-do-dia').onclick = async (ev) => {
 
 $('a-tipo').onchange = () => {
   const t = $('a-tipo').value;
-  $('a-wrap-hora').hidden = t !== 'insercao';
-  $('a-wrap-min').hidden  = t === 'insercao';
+  $('a-wrap-hora').hidden     = t !== 'insercao';
+  $('a-wrap-dias').hidden     = t !== 'atestado';
+  $('a-dica-atestado').hidden = t !== 'atestado';
+  $('a-wrap-min').hidden      = t === 'insercao' || t === 'atestado';
 };
 
 $('dlg-ajuste-salvar').onclick = async () => {
@@ -4079,6 +4218,28 @@ $('dlg-ajuste-salvar').onclick = async () => {
   const just = $('a-just').value.trim();
   if (!EU) return (err.textContent = 'Seu login não está ligado a um cadastro de pessoa.');
   if (just.length < 5) return (err.textContent = 'Escreva a justificativa — ela fica registrada com seu nome.');
+
+  // Atestado medico e contado em DIAS. A RPC quebra o periodo em um abono por
+  // dia com expediente, usando a carga prevista de cada dia.
+  if (tipo === 'atestado'){
+    const dias = Number($('a-dias').value || 0);
+    if (!Number.isInteger(dias) || dias < 1 || dias > 180)
+      return (err.textContent = 'Informe quantos dias de atestado, de 1 a 180.');
+    err.textContent = '';
+    const btn = $('dlg-ajuste-salvar');
+    btn.disabled = true; btn.textContent = 'Lançando…';
+    const { data: r, error } = await P.rpc('lancar_atestado', {
+      p_emp: ajustando.emp, p_inicio: ajustando.data,
+      p_dias: dias, p_justificativa: just });
+    btn.disabled = false; btn.textContent = 'Registrar ajuste';
+    if (error) return (err.textContent = traduzir(error.message));
+    const partes = [`${r.dias_abonados} dia(s) abonado(s) até ${dia(r.fim)}`];
+    if (r.dias_sem_expediente) partes.push(`${r.dias_sem_expediente} sem expediente`);
+    if (r.dias_ja_cobertos)    partes.push(`${r.dias_ja_cobertos} já tinham abono`);
+    recado(partes.join(' · '), r.dias_abonados ? 'ok' : 'erro');
+    $('dlg-ajuste').close(); carregarEspelho();
+    return;
+  }
 
   const reg = { empregado_id: ajustando.emp, data: ajustando.data, tipo,
                 justificativa: just, criado_por: EU.id };
@@ -4124,6 +4285,7 @@ $('btn-csv').onclick = async () => {
 
 /* ===================== BANCO ===================== */
 async function carregarBanco(){
+  await garantirEquipe();
   const fim = $('b-fim').value;
   const { data: cfg } = await P.from('banco_config')
     .select('prazo_meses,teto_positivo_min,teto_negativo_min').maybeSingle();
@@ -4136,31 +4298,40 @@ async function carregarBanco(){
     + `saldo mais antigo de cada pessoa. Confirme com o contador qual instrumento vocês `
     + `têm assinado antes de confiar no prazo de ${prazo} meses configurado aqui.`;
 
-  const ativos = EQUIPE.filter(e => e.ativo);
+  const ativos = comPonto();
+  $('t-banco').innerHTML = '<tr><td colspan="4" class="vazio">Somando o banco…</td></tr>';
   const linhas = await Promise.all(ativos.map(async e => {
-    const { data: s } = await P.rpc('saldo_banco', { p_emp:e.id, p_ate:fim });
+    // saldo vivo = o que ja foi fechado mais o que esta apurado e ainda nao
+    // entrou em banco_lancamentos. Sem isto a tela mostrava zero para todo
+    // mundo enquanto ninguem clicasse em "Fechar mes no banco".
+    const { data: v } = await P.rpc('banco_saldo_vivo', { p_emp:e.id, p_ate:fim });
+    const vivo = (v ?? [])[0] ?? {};
     const { data: ant } = await P.from('banco_lancamentos')
       .select('data').eq('empregado_id', e.id).gt('minutos', 0)
       .order('data').limit(1).maybeSingle();
     let restam = null;
-    if (ant && s > 0){
+    if (ant && (vivo.total_min ?? 0) > 0){
       const venc = new Date(ant.data); venc.setMonth(venc.getMonth() + prazo);
       restam = Math.round((venc - new Date()) / 86400000);
     }
-    return { e, s: s ?? 0, restam };
+    return { e, vivo, restam };
   }));
 
-  $('t-banco').innerHTML = linhas.length ? linhas.map(({e,s,restam}) => {
+  $('t-banco').innerHTML = linhas.length ? linhas.map(({e,vivo,restam}) => {
+    const s = vivo.total_min ?? 0;
     const estouro = cfg && (s > cfg.teto_positivo_min || s < cfg.teto_negativo_min);
+    const aberto = vivo.aberto_min ?? 0;
     return `<tr>
-      <td class="destaque" data-rotulo=""><button class="leve" data-extrato="${e.id}" style="padding:6px 11px;min-height:0">${esc(e.nome)}</button></td>
+      <td class="destaque" data-rotulo=""><button class="leve" data-extrato="${e.id}" style="padding:6px 11px;min-height:0">${esc(e.nome)}</button>
+        ${aberto ? `<div class="mudo" style="font-size:12px;margin-top:3px">${hm(vivo.consolidado_min)} fechado · ${hm(aberto)} em aberto</div>` : ''}
+        ${vivo.dias_pendentes ? `<div class="mudo" style="font-size:12px">${vivo.dias_pendentes} dia(s) sem apurar, fora da conta</div>` : ''}</td>
       ${saldoCel(s)}
       <td data-rotulo="Situação">${estouro ? '<span class="tag alerta">fora do teto</span>'
            : s === 0 ? '<span class="tag neutra">zerado</span>'
            : `<span class="tag ${s>0?'ok':'alerta'}">${s>0?'a compensar':'a repor'}</span>`}</td>
       <td class="n ${restam !== null && restam < 30 ? 'neg' : ''}" data-rotulo="Prazo">${restam === null ? '—' : `${restam} d`}</td>
     </tr>`;
-  }).join('') : '<tr><td colspan="4" class="vazio">Nenhuma pessoa ativa.</td></tr>';
+  }).join('') : '<tr><td colspan="4" class="vazio">Nenhuma pessoa sujeita a controle de ponto.</td></tr>';
 }
 $('b-fim').onchange = carregarBanco;
 
@@ -4246,12 +4417,94 @@ $('t-aberto').onclick = (ev) => {
 };
 
 /* ===================== RELATÓRIOS ===================== */
+/* Gráficos em SVG escrito à mão: o sistema é arquivo único sem build, então
+   não entra biblioteca. viewBox fixo com largura 100% resolve o responsivo. */
+const CT = { azul:'#19408B', vermelho:'#E6143C', linha:'#E4E4E7', superficie:'#F7F7F9',
+             cinza:'#5A5A5A', apagado:'#8A8A8E', branco:'#FFFFFF' };
+
+function svgWrap(altura, conteudo){
+  return `<svg viewBox="0 0 720 ${altura}" preserveAspectRatio="xMidYMid meet" role="img">${conteudo}</svg>`;
+}
+const txt = (x,y,t,o={}) =>
+  `<text x="${x}" y="${y}" font-family="Poppins,system-ui,sans-serif" font-size="${o.s??12}"
+    fill="${o.c??CT.cinza}" text-anchor="${o.a??'start'}" font-weight="${o.w??500}"
+    style="font-variant-numeric:tabular-nums">${esc(t)}</text>`;
+
+/* Barra de cumprimento: trilho = previsto, barra = trabalhado. */
+function gCumprimento(itens){
+  if (!itens.length) return '<p class="vazio">Sem dados no período.</p>';
+  const L = 156, R = 660, alt = 46, topo = 24;
+  const max = Math.max(...itens.map(i => Math.max(i.prev, i.real)), 1);
+  const larg = (v) => Math.max(2, (v / max) * (R - L));
+  const linhas = itens.map((i, k) => {
+    const y = topo + k * alt;
+    const pct = i.prev ? Math.round((i.real / i.prev) * 100) : 0;
+    const cor = pct >= 97 ? CT.azul : pct >= 85 ? '#B45309' : CT.vermelho;
+    return txt(0, y + 13, i.rot, { s:13, c:'#1A1A1A', w:500 })
+      + `<rect x="${L}" y="${y}" width="${larg(i.prev)}" height="9" rx="4.5" fill="${CT.linha}"/>`
+      + `<rect x="${L}" y="${y + 13}" width="${larg(i.real)}" height="9" rx="4.5" fill="${cor}"/>`
+      + txt(L + larg(i.prev) + 8, y + 8, hm(i.prev), { s:11, c:CT.apagado })
+      + txt(L + larg(i.real) + 8, y + 21, `${hm(i.real)} · ${pct}%`, { s:11.5, c:cor, w:600 });
+  }).join('');
+  return svgWrap(topo + itens.length * alt, linhas);
+}
+
+/* Saldo do período: barras divergentes em torno do zero. */
+function gSaldo(itens){
+  if (!itens.length) return '<p class="vazio">Sem dados no período.</p>';
+  const L = 156, R = 690, alt = 38, topo = 26;
+  const min = Math.min(0, ...itens.map(i => i.v));
+  const max = Math.max(0, ...itens.map(i => i.v));
+  const amp = (max - min) || 1;
+  const x = (v) => L + ((v - min) / amp) * (R - L);
+  const zero = x(0);
+  const barras = itens.map((i, k) => {
+    const y = topo + k * alt;
+    const xv = x(i.v), pos = i.v >= 0;
+    const cor = pos ? CT.azul : CT.vermelho;
+    return txt(0, y + 15, i.rot, { s:13, c:'#1A1A1A' })
+      + `<rect x="${Math.min(zero, xv)}" y="${y + 4}" width="${Math.max(2, Math.abs(xv - zero))}" height="18" rx="4" fill="${cor}"/>`
+      + txt(pos ? xv + 7 : xv - 7, y + 17, (i.v > 0 ? '+' : '') + hm(i.v),
+            { s:11.5, c:cor, w:600, a: pos ? 'start' : 'end' });
+  }).join('');
+  const h = topo + itens.length * alt;
+  return svgWrap(h + 6,
+    `<line x1="${zero}" y1="14" x2="${zero}" y2="${h}" stroke="${CT.linha}" stroke-width="1"/>`
+    + txt(zero, 10, '0', { s:10, c:CT.apagado, a:'middle' }) + barras);
+}
+
 async function carregarRelatorios(){
   const ini = $('r-ini').value, fim = $('r-fim').value;
+  $('g-horas').innerHTML = '<p class="vazio">Calculando…</p>';
+  $('g-saldo').innerHTML = '';
 
   const { data: resumo, error } = await P.rpc('resumo_equipe', { p_ini:ini, p_fim:fim });
-  if (error) return recado(traduzir(error.message), 'erro');
-  $('t-resumo').innerHTML = (resumo ?? []).length ? resumo.map(r => `<tr>
+  if (error){ $('g-horas').innerHTML = ''; return recado(traduzir(error.message), 'erro'); }
+  const R = resumo ?? [];
+
+  const T = (k) => R.reduce((a, r) => a + Number(r[k] ?? 0), 0);
+  const aderencia = T('dias_previstos') ? Math.round(T('dias_trabalhados') / T('dias_previstos') * 100) : 0;
+  const cumpr = T('trabalhado_min') && R.length
+    ? Math.round(T('trabalhado_min') / R.reduce((a,r) => a + (r.dias_previstos * 480 || 0), 0) * 100) : null;
+  $('r-kpis').innerHTML = `
+    <div class="ind"><dt>Pessoas</dt><dd>${R.length}</dd><p class="nota">com controle de ponto</p></div>
+    <div class="ind"><dt>Aderência</dt><dd class="${aderencia >= 95 ? 'pos' : 'neg'}">${aderencia}%</dd>
+      <p class="nota">${T('dias_trabalhados')} de ${T('dias_previstos')} dias</p></div>
+    <div class="ind"><dt>Faltas</dt><dd class="${T('faltas') ? 'neg' : ''}">${T('faltas')}</dd>
+      <p class="nota">sem abono lançado</p></div>
+    <div class="ind"><dt>Atrasos</dt><dd class="${T('qtd_atrasos') ? 'neg' : ''}">${T('qtd_atrasos')}</dd>
+      <p class="nota">${hm(T('atraso_total_min'))} no total</p></div>
+    <div class="ind"><dt>Saldo do período</dt><dd class="${T('saldo_periodo_min') >= 0 ? 'pos' : 'neg'}">${T('saldo_periodo_min') > 0 ? '+' : ''}${hm(T('saldo_periodo_min'))}</dd>
+      <p class="nota">soma da equipe</p></div>
+    <div class="ind"><dt>Dias em aberto</dt><dd class="${T('dias_em_aberto') ? 'neg' : ''}">${T('dias_em_aberto')}</dd>
+      <p class="nota">esperando ajuste</p></div>`;
+
+  $('g-horas').innerHTML = gCumprimento(R.map(r => ({
+    rot: r.nome.split(' ')[0], prev: r.dias_previstos * 480, real: r.trabalhado_min })));
+  $('g-saldo').innerHTML = gSaldo(
+    R.map(r => ({ rot: r.nome.split(' ')[0], v: r.saldo_periodo_min })).sort((a,b) => a.v - b.v));
+
+  $('t-resumo').innerHTML = R.length ? R.map(r => `<tr>
     <td class="destaque" data-rotulo=""><strong>${esc(r.nome)}</strong>${r.cargo ? `<div class="mudo" style="font-size:12.5px">${esc(r.cargo)}</div>` : ''}</td>
     <td class="n" data-rotulo="Dias previstos">${r.dias_previstos}</td>
     <td class="n" data-rotulo="Trabalhados">${r.dias_trabalhados}</td>
@@ -4269,16 +4522,33 @@ async function carregarRelatorios(){
   for (const r of rec ?? []) (porPessoa[r.nome] ??= {})[r.dia_semana] = r;
   const cab = '<div></div>' + [1,2,3,4,5,6].map(d => `<div class="cab">${DOW[d]}</div>`).join('');
   const corpo = Object.entries(porPessoa).map(([nome, dias]) =>
-    `<div class="quem">${esc(nome)}</div>` + [1,2,3,4,5,6].map(d => {
+    `<div class="quem">${esc(nome.split(' ')[0])}</div>` + [1,2,3,4,5,6].map(d => {
       const r = dias[d];
-      if (!r) return '<div class="cel mudo">·</div>';
-      const forte = r.taxa >= 0.5;
-      return `<div class="cel" style="${forte
-        ? 'background:var(--rosa);border-color:var(--vermelho);color:var(--vermelho-escuro);font-weight:700'
-        : ''}" title="média de ${r.atraso_medio_min} min">${r.ocorrencias}/${r.dias_no_periodo}</div>`;
+      if (!r || !r.dias_no_periodo) return '<div class="cel2 n0"><b>—</b></div>';
+      const taxa = Number(r.taxa ?? 0);
+      const n = taxa >= 0.5 ? 3 : taxa >= 0.25 ? 2 : taxa > 0 ? 1 : 0;
+      return `<div class="cel2 n${n}" title="${r.ocorrencias} atraso(s) em ${r.dias_no_periodo} dia(s)${
+        r.atraso_medio_min ? `, média de ${r.atraso_medio_min} min` : ''}">
+        <b>${Math.round(taxa * 100)}%</b><span>${r.ocorrencias} de ${r.dias_no_periodo}</span></div>`;
     }).join('')).join('');
   $('mapa-semana').innerHTML = Object.keys(porPessoa).length ? cab + corpo
-    : '<p class="vazio" style="grid-column:1/-1">Nenhum atraso registrado no período.</p>';
+    : '<p class="vazio" style="grid-column:1/-1">Ninguém tem jornada prevista no período escolhido.</p>';
+
+  // Leitura em texto: o padrao mais forte primeiro, porque numero em grade
+  // ninguem le, e o que importa e saber com quem conversar e sobre o que.
+  const pico = (rec ?? []).filter(r => r.dias_no_periodo >= 2 && r.taxa >= 0.5)
+    .sort((a,b) => b.taxa - a.taxa || b.atraso_total_min - a.atraso_total_min)[0];
+  const total = (rec ?? []).reduce((a,r) => a + r.ocorrencias, 0);
+  $('r-leitura').innerHTML = !total
+    ? 'Nenhum atraso no período. Nada a tratar aqui.'
+    : pico
+      ? `<strong>${esc(pico.nome.split(' ')[0])} chega atrasado em ${pico.ocorrencias} de `
+        + `${pico.dias_no_periodo} ${esc(pico.dia_rotulo)}s</strong> do período, com média de `
+        + `${pico.atraso_medio_min} min. Isso é padrão, não acaso: vale entender o que acontece `
+        + `nesse dia antes de tratar como indisciplina. No total a equipe soma ${total} atraso(s) `
+        + `no período.`
+      : `A equipe soma ${total} atraso(s) no período, sem concentração em nenhum dia da semana. `
+        + `Atraso espalhado assim costuma ser trânsito e imprevisto, não hábito.`
 
   const { data: faltas } = await P.rpc('relatorio_faltas', { p_ini:ini, p_fim:fim });
   $('t-faltas').innerHTML = (faltas ?? []).length ? faltas.map(f => `<tr>
@@ -4291,6 +4561,17 @@ async function carregarRelatorios(){
 }
 $('r-ini').onchange = carregarRelatorios;
 $('r-fim').onchange = carregarRelatorios;
+
+document.querySelectorAll('#p-relatorios [data-periodo]').forEach(b => b.onclick = () => {
+  const h = new Date(), y = h.getFullYear(), m = h.getMonth();
+  const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,10);
+  let a, z;
+  if (b.dataset.periodo === 'mes'){ a = new Date(y, m, 1); z = h; }
+  else if (b.dataset.periodo === 'anterior'){ a = new Date(y, m - 1, 1); z = new Date(y, m, 0); }
+  else { a = new Date(h.getTime() - 29 * 86400000); z = h; }
+  $('r-ini').value = iso(a); $('r-fim').value = iso(z);
+  carregarRelatorios();
+});
 
 /* ===================== CONFIGURAÇÕES ===================== */
 async function carregarConfig(){
@@ -4508,7 +4789,17 @@ async function sair(){
   EU = null; EQUIPE = []; JORNADAS = []; TURNOS = {}; SITUACAO = {};
 }
 
-window.PONTO = { abrir, sair };
+/* Ponte com a folha do administrativo. O ADM roda no projeto financeiro e
+   nao alcanca o banco do ponto; esta funcao devolve a apuracao consolidada da
+   competencia para a tela de fechamento preencher sozinha. */
+async function apuracao(comp){
+  if (!bootado && !(await boot())) return null;
+  const { data, error } = await P.rpc('apuracao_competencia', { p_comp: comp });
+  if (error) throw new Error(traduzir(error.message));
+  return data ?? [];
+}
+
+window.PONTO = { abrir, sair, apuracao };
 
 </script>
 </body>
