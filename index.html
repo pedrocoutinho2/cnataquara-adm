@@ -559,8 +559,14 @@ table.tFolha td,table.tFolha th{padding:7px 6px}
 table.tFolha .mini{width:100%;min-width:74px}
 table.tFolha .mini2{width:100%;min-width:52px}
 table.tFolha .selInp,table.tFolha .txtInp{width:100%;min-width:0}
-table.tFolha td.num{white-space:normal}
+/* Valor em dinheiro nunca quebra: "R$ 1.660,50" em duas linhas nao e leitura,
+   e a folha ja rola na horizontal dentro do .tableWrap quando falta espaco. */
+table.tFolha td.num{white-space:nowrap}
 table.tFolha .hint{white-space:normal;line-height:1.25}
+table.tFolha th{white-space:nowrap}
+table.tFolha td:first-child{min-width:150px}
+/* A folha tem 11 colunas: aqui ela usa a tela inteira em vez dos 1180 do resto. */
+main.wide{max-width:1500px}
 .dateInp{width:150px;text-align:left!important}
 .txtInp{width:100%;min-width:110px;text-align:left!important}
 .selInp{width:100%;min-width:120px}
@@ -1418,6 +1424,7 @@ function render(){
     return;
   }
   wrap.hidden=true; el.hidden=false;
+  const mainEl=document.querySelector('main'); if(mainEl) mainEl.classList.toggle('wide',S.view==='folha');
   el.innerHTML='<div class="empty">Carregando…</div>';
   ({resumo:vResumo,fixas:el2=>vContas(el2,'fixa'),variaveis:el2=>vContas(el2,'variavel'),folha:vFolha,receitas:vReceitas,dre:vDRE,df:vDF,equipe:vEquipe,ponto:vPonto,documentos:vDocumentos,contratos:vContratos,acessos:vAcessos})[S.view](el).catch(e=>{ el.innerHTML=`<div class="panel"><b style="color:var(--redDark)">Erro:</b> ${esc(e.message)}</div>`; });
 }
@@ -1590,12 +1597,14 @@ async function marcarPago(id){ await db.upd('fin_lancamentos','id=eq.'+id,{statu
 /* ================= CONTAS ================= */
 let contasFiltro='todas';
 function setFiltro(f){ contasFiltro=f; render(); }
-let editRow=null, novoAberto=false;
+let editRow=null, novoAberto=false, contasLanc=[];
 function toggleEdit(id){ editRow = (editRow===id?null:id); render(); }
 function toggleNovo(){ novoAberto=!novoAberto; render(); }
 async function vContas(el,tipo){
   const c=S.comp, LBL = tipo==='fixa'?'fixas':'variáveis';
+  if(tipo==='fixa') await syncFixas(c);
   const lanc = await db.get('fin_lancamentos',`unidade=eq.${S.unidade}&competencia=eq.${c}&tipo_despesa=eq.${tipo}&select=*&order=vencimento.asc.nullslast,id.asc`);
+  contasLanc=lanc;
   const cats=S.cfg.categorias_despesa||[];
   const hoje=todayISO();
   const tot=lanc.reduce((a,l)=>a+l.valor_cents,0), pg=lanc.filter(l=>l.status==='pago').reduce((a,l)=>a+l.valor_cents,0);
@@ -1636,7 +1645,6 @@ async function vContas(el,tipo){
 
   <div class="panelHead" style="margin-bottom:10px">
     <button class="btn" onclick="toggleNovo()">${novoAberto?'Cancelar':'+ Nova despesa '+(tipo==='fixa'?'fixa':'variável')}</button>
-    ${tipo==='fixa'&&lanc.length===0?`<button class="btn sm sec" onclick="gerarMes()">Gerar lançamentos do mês</button>`:''}
   </div>
 
   ${novoAberto?`
@@ -1650,7 +1658,7 @@ async function vContas(el,tipo){
       <div class="field"><label>Responsável</label><input id="avResp"></div>
       <button class="btn" onclick="addAvulsa('${tipo}')">Salvar</button>
     </div>
-    ${tipo==='fixa'?`<p class="hint">Despesa fixa entra também no cadastro de recorrentes e passa a ser gerada todo mês.</p>`:''}
+    ${tipo==='fixa'?`<p class="hint">Despesa fixa entra no cadastro de recorrentes e passa a ser lançada sozinha em todo mês seguinte.</p>`:''}
   </div>`:''}
 
   <div class="panel">
@@ -1664,24 +1672,42 @@ async function vContas(el,tipo){
     :`<div class="empty">Nenhuma despesa ${LBL} ${contasFiltro!=='todas'?'nesse filtro':'neste mês ainda'}.</div>`}
   </div>`;
 }
-async function gerarMes(){
-  const c=S.comp, ld=lastDay(c);
-  const recs=await db.get('fin_despesas_recorrentes',`unidade=eq.${S.unidade}&ativo=eq.true&select=*`);
-  if(!recs.length) return toast('Nenhuma despesa recorrente cadastrada');
-  const rows=recs.map(r=>({unidade:S.unidade,competencia:c,tipo:'despesa',origem:'recorrente',recorrente_id:r.id,nome:r.nome,categoria:r.categoria,tipo_despesa:'fixa',valor_cents:r.valor_cents||0,vencimento:r.dia_vencimento?`${c}-${String(Math.min(r.dia_vencimento,ld)).padStart(2,'0')}`:null,responsavel:r.responsavel,obs:r.obs}));
-  await db.ins('fin_lancamentos',rows);
-  toast(rows.length+' lançamentos gerados'); render();
+/* Despesa fixa e todo mes: o banco materializa o que falta na competencia aberta.
+   Idempotente (fin_fixas_sync respeita vigencia e fin_recorrente_skip).
+   Falha de sincronizacao nunca impede a tela de carregar. */
+async function syncFixas(c){
+  try{ await db.rpc('fin_fixas_sync',{p_unidade:S.unidade,p_competencia:c}); }
+  catch(e){ console.warn('fin_fixas_sync falhou',e); }
 }
 async function mudaValor(id,v){ await db.upd('fin_lancamentos','id=eq.'+id,{valor_cents:parseBRL(v)}); toast('Valor atualizado'); render(); }
-async function mudaLanc(id,campo,v){ await db.upd('fin_lancamentos','id=eq.'+id,{[campo]:v}); toast('Atualizado'); }
+async function mudaLanc(id,campo,v){
+  const cap=(campo==='nome'||campo==='responsavel');
+  if(cap && v) v=capTitulo(v);
+  await db.upd('fin_lancamentos','id=eq.'+id,{[campo]:v}); toast('Atualizado');
+  if(cap) render();
+}
 async function mudaVenc(id,v){ await db.upd('fin_lancamentos','id=eq.'+id,{vencimento:v||null}); toast('Vencimento atualizado'); render(); }
-async function mudaRec(id,campo,v){ await db.upd('fin_despesas_recorrentes','id=eq.'+id,{[campo]:v}); toast('Recorrente atualizada'); render(); }
+async function mudaRec(id,campo,v){
+  if((campo==='nome'||campo==='responsavel') && v) v=capTitulo(v);
+  await db.upd('fin_despesas_recorrentes','id=eq.'+id,{[campo]:v}); toast('Recorrente atualizada'); render();
+}
 async function delRec(id){ if(!confirm('Excluir essa despesa recorrente?'))return; await db.del('fin_despesas_recorrentes','id=eq.'+id); render(); }
 async function desmarcar(id){ await db.upd('fin_lancamentos','id=eq.'+id,{status:'pendente',pago_em:null}); render(); }
-async function delLanc(id){ if(!confirm('Excluir esse lançamento?'))return; await db.del('fin_lancamentos','id=eq.'+id); render(); }
+async function delLanc(id){
+  const l=(contasLanc||[]).find(x=>x.id===id);
+  if(l && l.recorrente_id){
+    if(!confirm(`"${l.nome}" é despesa fixa e é relançada todo mês.\n\nOK tira ela só de ${compLabel(l.competencia)}. Para encerrar de vez, desative em Cadastros › Recorrentes.`)) return;
+    try{ await db.ins('fin_recorrente_skip',[{recorrente_id:l.recorrente_id,competencia:l.competencia,motivo:'Excluída na tela de despesas fixas'}]); }
+    catch(e){ console.warn('skip',e); }
+    await db.del('fin_lancamentos','id=eq.'+id);
+    toast('Fora só desta competência'); return render();
+  }
+  if(!confirm('Excluir esse lançamento?'))return;
+  await db.del('fin_lancamentos','id=eq.'+id); render();
+}
 async function addAvulsa(tipo){
-  const nome=avNome.value.trim(); if(!nome) return toast('Dê um nome à despesa');
-  const valor=parseBRL(avValor.value), venc=avVenc.value||null, resp=avResp.value.trim()||null;
+  const nome=capTitulo(avNome.value); if(!nome) return toast('Dê um nome à despesa');
+  const valor=parseBRL(avValor.value), venc=avVenc.value||null, resp=capTitulo(avResp.value)||null;
   let recId=null;
   if(tipo==='fixa'){
     const r=await db.ins('fin_despesas_recorrentes',[{unidade:S.unidade,nome,categoria:avCat.value,
@@ -1717,9 +1743,8 @@ async function vFolha(el){
   const fechada=rows.length>0&&rows.every(r=>r.fechada);
   drawFolha(el,fechada);
 }
-let editFunc=null, novoFunc=false;
+let novoFunc=false;
 const SETORES=['Comercial','Coordenação','Administrativo','Professores'];
-function toggleEditFunc(id){ editFunc=(editFunc===id?null:id); drawFolha(document.getElementById('view'),folhaData.fechada); }
 function toggleNovoFunc(){ novoFunc=!novoFunc; drawFolha(document.getElementById('view'),folhaData.fechada); }
 function drawFolha(el,fechada){
   folhaData.fechada=fechada;
@@ -1734,7 +1759,7 @@ function drawFolha(el,fechada){
       totF+=k.fgts_cents; totProv+=k.ferias_prov_cents+k.decimo_prov_cents;
       totAd+=r.adiantamento_cents||0; totVtD+=k.vt_desconto_cents; }
     const dis=fechada?'disabled':'';
-    const ed=editFunc===f.id, prof=f.tipo==='horista';
+    const prof=f.tipo==='horista';
     const producao = prof
       ? `<input class="mini money" ${dis} value="${temBaseManual(r)?moneyVal(r.base_manual_cents):''}" placeholder="${moneyVal(Math.round((r.horas||0)*(f.valor_hora_cents||0)))}" title="Digite o valor do mês; as horas saem daqui" onchange="fBaseProf(${f.id},this.value)">
          <div class="hint">${f.valor_hora_cents?`${fmtH(horasDe(f,r))} h · ${fmt(f.valor_hora_cents)}/h`:'sem valor/hora cadastrado'}</div>`
@@ -1744,11 +1769,11 @@ function drawFolha(el,fechada){
           ? `<input class="mini2" ${dis} value="${r.pagamentos||0}" onchange="fEdit(${f.id},'pagamentos',parseInt(this.value)||0)"> pg`
           : f.comissao_tipo==='coord_comercial' ? `<span class="hint">50% do Comercial</span>` : '—';
     const acoes=`
-      <button class="ico" title="${ed?'Concluir':'Editar cadastro'}" onclick="toggleEditFunc(${f.id})">${ed?'✔':'✏️'}</button>
+      <button class="ico" title="Remuneração e benefícios" onclick="abrirRemuneracao(${f.id})">✏️</button>
       <button class="ico" title="${f.ativo?'Desativar':'Reativar'}" onclick="toggleFunc(${f.id},${!f.ativo})">${f.ativo?'🚫':'↩'}</button>
       <button class="ico del" title="Excluir" onclick="delFunc(${f.id})">🗑</button>`;
 
-    if(!ed) return `<tr style="${f.ativo?'':'opacity:.45'}">
+    return `<tr style="${f.ativo?'':'opacity:.45'}">
       <td><b>${esc(f.nome)}</b><div class="hint">${esc(f.funcao||'')}</div></td>
       <td class="num">${producao}</td>
       <td class="num">${fmt(k.salario_base_cents)}</td>
@@ -1759,25 +1784,6 @@ function drawFolha(el,fechada){
       <td class="num"><input class="mini money" ${dis} value="${moneyVal(r.adiantamento_cents||0)}" onchange="fEdit(${f.id},'adiantamento_cents',parseBRL(this.value))"></td>
       <td class="num"><b>${fmt(k.liquido_cents)}</b></td>
       <td class="num" style="color:var(--gray)">${fmt(k.custo_total_cents)}</td>
-      <td class="acoes">${acoes}</td></tr>`;
-
-    return `<tr class="editing">
-      <td><input class="txtInp" value="${esc(f.nome)}" onchange="funcEdit(${f.id},'nome',this.value)">
-        <select class="selInp" style="margin-top:4px" onchange="funcEdit(${f.id},'funcao',this.value)">
-          ${funcoes.map(x=>`<option ${x===f.funcao?'selected':''}>${esc(x)}</option>`).join('')}</select></td>
-      <td><select class="selInp" onchange="funcEdit(${f.id},'setor',this.value)">
-          ${SETORES.map(x=>`<option ${x===f.setor?'selected':''}>${esc(x)}</option>`).join('')}</select>
-        <select class="selInp" style="margin-top:4px" onchange="funcEdit(${f.id},'comissao_tipo',this.value)">
-          ${[['nenhuma','Sem comissão'],['matricula','Por matrícula'],['pagamentos','Por pagamento'],['coord_comercial','50% do Comercial']].map(p=>`<option value="${p[0]}" ${p[0]===f.comissao_tipo?'selected':''}>${p[1]}</option>`).join('')}</select></td>
-      <td class="num"><input class="mini money" value="${moneyVal(f.salario_cents)}" onchange="funcEdit(${f.id},'salario_cents',parseBRL(this.value))">
-        <input class="mini money" style="margin-top:4px" value="${moneyVal(f.valor_hora_cents)}" onchange="funcEdit(${f.id},'valor_hora_cents',parseBRL(this.value))"></td>
-      <td><select class="selInp" onchange="funcEdit(${f.id},'tipo',this.value)">
-          <option value="mensalista" ${f.tipo==='mensalista'?'selected':''}>Mensalista</option>
-          <option value="horista" ${f.tipo==='horista'?'selected':''}>Horista</option></select></td>
-      <td class="num"><input class="mini money" value="${moneyVal(f.vt_cents)}" onchange="funcEdit(${f.id},'vt_cents',parseBRL(this.value))"></td>
-      <td class="num"><input class="mini money" value="${moneyVal(f.ifood_cents)}" onchange="funcEdit(${f.id},'ifood_cents',parseBRL(this.value))"></td>
-      <td class="num"><input class="mini money" value="${moneyVal(f.plano_saude_cents)}" onchange="funcEdit(${f.id},'plano_saude_cents',parseBRL(this.value))"></td>
-      <td colspan="2" class="hint">Salário mensal em cima, valor/hora embaixo.</td>
       <td class="acoes">${acoes}</td></tr>`;
   };
 
@@ -1856,11 +1862,67 @@ function painelParametros(){
   <p class="hint" style="margin:8px 0 12px">A comissão por matrícula vale para o Comercial e é a base dos 50% da Coordenação. A comissão por pagamento vale para o Administrativo. Na tabela da folha, digitar um valor na coluna Comissão sobrepõe o cálculo automático daquela pessoa; apagar volta ao automático. O vale transporte é descontado sobre salário + comissão, só de quem tem VT cadastrado. O INSS não entra na folha: é recolhido por guia depois. Provisão de férias em 1/9 (férias + terço).</p>
   <button class="btn" onclick="salvaCfg()">Salvar parâmetros</button></div>`;
 }
-async function funcEdit(id,campo,v){
-  if(campo==='nome'||campo==='funcao') v=capNome(v);
-  await db.upd('fin_funcionarios','id=eq.'+id,{[campo]:v});
-  const f=(folhaData.todos||[]).find(x=>x.id===id); if(f) f[campo]=v;
-  toast('Atualizado');
+/* Cadastro e remuneracao saem da linha da tabela e vao para modal (regra 1).
+   Na linha, os campos caiam em colunas que diziam outra coisa no cabecalho:
+   setor embaixo de "Producao", tipo embaixo de "Comissao", e os selects
+   cortavam o texto. A ficha da tela Equipe cobre dados pessoais; aqui fica o
+   que e da folha: salario, comissao e beneficios. */
+function abrirRemuneracao(id){
+  const f=(folhaData.todos||[]).find(x=>x.id===id)||(EQUIPE_CACHE||[]).find(x=>x.id===id);
+  if(!f) return toast('Funcionário não encontrado');
+  modalCtx=null;
+  const funcoes=(S.cfg&&S.cfg.funcoes)||[];
+  const html=`
+    <h3 class="mSec">Cadastro</h3>
+    <div class="gGrid">
+      ${gF('Nome','rm_nome',f.nome)}
+      ${gS('Setor','rm_setor',f.setor||'Administrativo',SETORES)}
+      <div class="field"><label>Função</label>
+        <input class="txtInp" id="rm_funcao" list="rm_funcoes" value="${esc(f.funcao||'')}">
+        <datalist id="rm_funcoes">${funcoes.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
+      ${gS('Tipo','rm_tipo',f.tipo||'mensalista',[['mensalista','Mensalista'],['horista','Horista']])}
+    </div>
+    <h3 class="mSec">Remuneração</h3>
+    <div class="gGrid">
+      ${gFm('Salário mensal','rm_salario',f.salario_cents)}
+      ${gFm('Valor da hora','rm_hora',f.valor_hora_cents)}
+      ${gS('Comissão','rm_com',f.comissao_tipo||'nenhuma',[['nenhuma','Sem comissão'],['matricula','Por matrícula'],['pagamentos','Por pagamento'],['coord_comercial','50% do Comercial']])}
+    </div>
+    <h3 class="mSec">Benefícios</h3>
+    <div class="gGrid">
+      ${gFm('Vale transporte','rm_vt',f.vt_cents)}
+      ${gFm('iFood','rm_ifood',f.ifood_cents)}
+      ${gFm('Plano de saúde','rm_plano',f.plano_saude_cents)}
+    </div>
+    <p class="hint" style="margin-top:10px">Mensalista usa o salário do mês; horista usa o valor da hora, e na folha o que se digita é o valor do mês. Dados pessoais e documentos ficam na ficha, em Equipe.</p>
+    <div class="mFoot">
+      <button class="btn sec" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" id="rmBtn" onclick="salvarRemuneracao(${f.id})">Salvar</button>
+    </div>`;
+  openModal('Remuneração · '+f.nome,html);
+}
+
+async function salvarRemuneracao(id){
+  const nome=capNome(gv('rm_nome'));
+  if(!nome) return toast('Preencha o nome');
+  const com=gv('rm_com')||'nenhuma';
+  const body={
+    nome, funcao:gvc('rm_funcao'), setor:gv('rm_setor')||'Administrativo',
+    tipo:gv('rm_tipo')||'mensalista',
+    salario_cents:parseBRL(gv('rm_salario')), valor_hora_cents:parseBRL(gv('rm_hora')),
+    vt_cents:parseBRL(gv('rm_vt')), ifood_cents:parseBRL(gv('rm_ifood')),
+    plano_saude_cents:parseBRL(gv('rm_plano')),
+    comissao_tipo:com, comissionado:com!=='nenhuma'
+  };
+  const btn=document.getElementById('rmBtn'); if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  try{
+    await db.upd('fin_funcionarios','id=eq.'+id,body);
+    const f=(folhaData.todos||[]).find(x=>x.id===id); if(f) Object.assign(f,body);
+    fecharModal(); toast('Cadastro atualizado'); render();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='Salvar'; }
+    toast(e.message||'Não deu para salvar');
+  }
 }
 /* ATENCAO: todas as FKs de fin_funcionarios sao ON DELETE CASCADE. Excluir
    nao e bloqueado por vinculo: ele apaga junto ficha, documentos, eventos,
@@ -2126,7 +2188,7 @@ Salários pedagógicos: ${fmt(sp)}`:''}`;
 async function toggleRec(id,ativo){ await db.upd('fin_despesas_recorrentes','id=eq.'+id,{ativo}); render(); }
 async function addRec(){
   if(!nrNome.value.trim()) return toast('Dê um nome');
-  await db.ins('fin_despesas_recorrentes',[{unidade:S.unidade,nome:nrNome.value.trim(),categoria:nrCat.value,valor_cents:nrValor.value.trim()?parseBRL(nrValor.value):null,dia_vencimento:+nrDia.value||null,responsavel:capNome(nrResp.value)||null}]);
+  await db.ins('fin_despesas_recorrentes',[{unidade:S.unidade,nome:capTitulo(nrNome.value),categoria:nrCat.value,valor_cents:nrValor.value.trim()?parseBRL(nrValor.value):null,dia_vencimento:+nrDia.value||null,responsavel:capTitulo(nrResp.value)||null}]);
   toast('Recorrente adicionada — entra na geração do próximo mês'); render();
 }
 async function toggleFunc(id,ativo){ await db.upd('fin_funcionarios','id=eq.'+id,{ativo}); render(); }
@@ -2249,6 +2311,34 @@ function capNome(s){
   }).join(' ');
 }
 window.capNome = capNome;
+
+/* Nome de conta nao e nome de pessoa: sigla ja digitada em caixa alta fica de pe
+   (IPTU, SIMPLES, PJ) e palavra toda minuscula ganha inicial maiuscula.
+   Espelha public.fin_cap_titulo() no Supabase, que e quem manda de verdade. */
+const CAP_TIT_MINUS = new Set(['de','da','das','do','dos','e','em','na','no','nas','nos',
+  'a','o','as','os','ao','aos','\u00e0','\u00e0s','com','para','por','sem','sob','sobre',
+  'ou','del','la','le','les','van','von','y']);
+const CAP_SIGLAS = {cna:'CNA',fgts:'FGTS',inss:'INSS',iptu:'IPTU',ipva:'IPVA',darf:'DARF',
+  gps:'GPS',pj:'PJ',pf:'PF',cnpj:'CNPJ',cpf:'CPF',ssd:'SSD',hd:'HD',tv:'TV',wifi:'WiFi',
+  ifood:'iFood',tim:'TIM',vivo:'Vivo',oi:'Oi',dae:'DAE',dre:'DRE',df:'DF',vt:'VT',va:'VA',
+  vr:'VR',rep:'REP',crm:'CRM',adm:'ADM'};
+function capTitulo(s){
+  const t=String(s==null?'':s).replace(/\s+/g,' ').trim();
+  if(!t) return t;
+  return t.split(' ').map((w,i)=>{
+    const base=w.toLowerCase().replace(/[^a-z\u00e0-\u00ff]/g,'');
+    if(CAP_SIGLAS[base]) return w.replace(/[A-Za-z\u00c0-\u00ff]+/,CAP_SIGLAS[base]);
+    if(w!==w.toLowerCase()) return w;
+    if(i>0 && CAP_TIT_MINUS.has(base)) return w;
+    return w.replace(/[a-z\u00e0-\u00ff]/,c=>c.toUpperCase());
+  }).join(' ');
+}
+window.capTitulo = capTitulo;
+const CAP_TIT_CAMPOS = new Set(['avNome','avResp','nrNome','nrResp']);
+document.addEventListener('blur',e=>{
+  const el=e.target;
+  if(el && el.id && CAP_TIT_CAMPOS.has(el.id) && el.value) el.value=capTitulo(el.value);
+},true);
 /* Campos que sao nome proprio ou endereco. E-mail, PIX, CPF, banco, agencia,
    conta, CBO e matricula ficam de fora de proposito: nao sao nome. */
 const CAP_CAMPOS = new Set(['fc_nome','fc_funcao','fk_mae','fk_emerg','fk_log','fk_comp',
