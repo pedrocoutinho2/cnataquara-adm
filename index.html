@@ -552,9 +552,11 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .mini{width:112px;max-width:100%}
 input.mini,input.mini2{text-align:right}
 .mini2{width:72px;max-width:100%}
-/* Tabela da folha: 11 colunas nao cabem com largura fixa. Aqui os campos
-   acompanham a coluna em vez de estourar e cortar. */
-table.tFolha{table-layout:auto}
+/* Tabela da folha: uma tabela por setor. Com table-layout:auto cada bloco
+   media as colunas pelo proprio conteudo e as colunas nao batiam entre
+   Comercial, Coordenacao e Administrativo. Largura fixa por colgroup resolve:
+   os tres blocos passam a ter a mesma grade. */
+table.tFolha{table-layout:fixed;min-width:1080px}
 table.tFolha td,table.tFolha th{padding:7px 6px}
 table.tFolha .mini{width:100%;min-width:74px}
 table.tFolha .mini2{width:100%;min-width:52px}
@@ -564,7 +566,12 @@ table.tFolha .selInp,table.tFolha .txtInp{width:100%;min-width:0}
 table.tFolha td.num{white-space:nowrap}
 table.tFolha .hint{white-space:normal;line-height:1.25}
 table.tFolha th{white-space:nowrap}
-table.tFolha td:first-child{min-width:150px}
+table.tFolha td:first-child{min-width:0}
+table.tFolha td,table.tFolha th{overflow:hidden;text-overflow:ellipsis}
+/* Producao: o campo e o sufixo (mat/pg) andam juntos e nao invadem a Base. */
+.prodCell{display:flex;align-items:center;justify-content:flex-end;gap:5px}
+.prodCell input{flex:1;min-width:0}
+.prodCell .suf{font-size:11.5px;color:var(--gray);white-space:nowrap}
 /* A folha tem 11 colunas: aqui ela usa a tela inteira em vez dos 1180 do resto. */
 main.wide{max-width:1500px}
 .dateInp{width:150px;text-align:left!important}
@@ -1597,8 +1604,7 @@ async function marcarPago(id){ await db.upd('fin_lancamentos','id=eq.'+id,{statu
 /* ================= CONTAS ================= */
 let contasFiltro='todas';
 function setFiltro(f){ contasFiltro=f; render(); }
-let editRow=null, novoAberto=false, contasLanc=[];
-function toggleEdit(id){ editRow = (editRow===id?null:id); render(); }
+let novoAberto=false, contasLanc=[];
 function toggleNovo(){ novoAberto=!novoAberto; render(); }
 async function vContas(el,tipo){
   const c=S.comp, LBL = tipo==='fixa'?'fixas':'variáveis';
@@ -1612,27 +1618,18 @@ async function vContas(el,tipo){
 
   const linha=l=>{
     const late=l.status==='pendente'&&l.vencimento&&l.vencimento<hoje;
-    const ed = editRow===l.id;
     const acoes=`
       <button class="ico ${l.status==='pago'?'on':''}" title="Marcar como paga" onclick="setPago(${l.id},true)">👍</button>
       <button class="ico ${l.status==='pendente'?'on':''}" title="Marcar como pendente" onclick="setPago(${l.id},false)">👎</button>
-      <button class="ico" title="${ed?'Concluir edição':'Editar'}" onclick="toggleEdit(${l.id})">${ed?'✔':'✏️'}</button>
-      <button class="ico del" title="Excluir" onclick="delLanc(${l.id})">🗑</button>`;
-    if(!ed) return `<tr class="${l.status==='pago'?'paid':''}">
+      <button class="ico" title="Editar" onclick="abrirLancamento(${l.id})">✏️</button>
+      <button class="ico del" title="Excluir" onclick="excluirLancamento(${l.id})">🗑</button>`;
+    return `<tr class="${l.status==='pago'?'paid':''}">
       <td><span class="badge ${late?'late':l.status==='pago'?'pago':'pend'}">${late?'Atrasada':l.status==='pago'?'Paga':'Pendente'}</span></td>
       <td><span class="name">${esc(l.nome)}</span>${l.origem==='folha'?'<span class="tag">FOLHA</span>':''}${l.obs?`<div class="hint">${esc(l.obs)}</div>`:''}</td>
       <td><span class="badge cat">${esc(l.categoria)}</span></td>
       <td>${l.vencimento?dBRfull(l.vencimento):'—'}</td>
       <td>${esc(l.responsavel||'—')}</td>
       <td class="num"><b>${fmt(l.valor_cents)}</b></td>
-      <td class="acoes">${acoes}</td></tr>`;
-    return `<tr class="editing">
-      <td><span class="badge ${late?'late':l.status==='pago'?'pago':'pend'}">${late?'Atrasada':l.status==='pago'?'Paga':'Pendente'}</span></td>
-      <td><input class="txtInp" value="${esc(l.nome)}" onchange="mudaLanc(${l.id},'nome',this.value)"></td>
-      <td><select class="selInp" onchange="mudaLanc(${l.id},'categoria',this.value)">${cats.map(x=>`<option ${x===l.categoria?'selected':''}>${esc(x)}</option>`).join('')}</select></td>
-      <td><input class="dateInp" type="date" value="${l.vencimento||''}" onchange="mudaLanc(${l.id},'vencimento',this.value||null)"></td>
-      <td><input class="txtInp" value="${esc(l.responsavel||'')}" onchange="mudaLanc(${l.id},'responsavel',this.value||null)"></td>
-      <td class="num"><input class="mini money" value="${moneyVal(l.valor_cents)}" onchange="mudaLanc(${l.id},'valor_cents',parseBRL(this.value))"></td>
       <td class="acoes">${acoes}</td></tr>`;
   };
 
@@ -1679,31 +1676,124 @@ async function syncFixas(c){
   try{ await db.rpc('fin_fixas_sync',{p_unidade:S.unidade,p_competencia:c}); }
   catch(e){ console.warn('fin_fixas_sync falhou',e); }
 }
-async function mudaValor(id,v){ await db.upd('fin_lancamentos','id=eq.'+id,{valor_cents:parseBRL(v)}); toast('Valor atualizado'); render(); }
-async function mudaLanc(id,campo,v){
-  const cap=(campo==='nome'||campo==='responsavel');
-  if(cap && v) v=capTitulo(v);
-  await db.upd('fin_lancamentos','id=eq.'+id,{[campo]:v}); toast('Atualizado');
-  if(cap) render();
-}
-async function mudaVenc(id,v){ await db.upd('fin_lancamentos','id=eq.'+id,{vencimento:v||null}); toast('Vencimento atualizado'); render(); }
 async function mudaRec(id,campo,v){
   if((campo==='nome'||campo==='responsavel') && v) v=capTitulo(v);
   await db.upd('fin_despesas_recorrentes','id=eq.'+id,{[campo]:v}); toast('Recorrente atualizada'); render();
 }
 async function delRec(id){ if(!confirm('Excluir essa despesa recorrente?'))return; await db.del('fin_despesas_recorrentes','id=eq.'+id); render(); }
 async function desmarcar(id){ await db.upd('fin_lancamentos','id=eq.'+id,{status:'pendente',pago_em:null}); render(); }
-async function delLanc(id){
+/* Despesa fixa nao vive sozinha: ela e uma competencia de uma recorrente que
+   se repete. Editar ou excluir sem dizer o alcance ou mente (muda so um mes
+   quando a intencao era mudar sempre) ou destroi historico. Dai o seletor de
+   escopo, resolvido no banco por fin_fixa_aplicar / fin_fixa_excluir. */
+const ESCOPO_OPCOES=[['mes','Só nesta competência'],['futuros','Nesta e nas próximas'],['todos','Em todas as competências']];
+function escopoCampo(l,acao){
+  if(!l.recorrente_id) return '';
+  const txt = acao==='excluir'
+    ? 'Em "todas", os lançamentos já pagos ficam no histórico e a fixa é desativada. Em "nesta e nas próximas", a fixa passa a valer só até a competência anterior.'
+    : 'Fora de "só nesta", a mudança também vale para o cadastro da despesa fixa. Valor e vencimento só mexem em competência ainda não paga.';
+  return `<div class="field" style="grid-column:1/-1"><label>Aplicar a</label>
+    <select class="selInp" id="lc_escopo">${ESCOPO_OPCOES.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('')}</select>
+    <p class="hint" style="margin-top:6px">${txt}</p></div>`;
+}
+
+function abrirLancamento(id){
   const l=(contasLanc||[]).find(x=>x.id===id);
-  if(l && l.recorrente_id){
-    if(!confirm(`"${l.nome}" é despesa fixa e é relançada todo mês.\n\nOK tira ela só de ${compLabel(l.competencia)}. Para encerrar de vez, desative em Cadastros › Recorrentes.`)) return;
-    try{ await db.ins('fin_recorrente_skip',[{recorrente_id:l.recorrente_id,competencia:l.competencia,motivo:'Excluída na tela de despesas fixas'}]); }
-    catch(e){ console.warn('skip',e); }
-    await db.del('fin_lancamentos','id=eq.'+id);
-    toast('Fora só desta competência'); return render();
+  if(!l) return toast('Lançamento não encontrado');
+  modalCtx=null;
+  const cats=S.cfg.categorias_despesa||[];
+  const fixa=!!l.recorrente_id;
+  const dia=l.vencimento?+l.vencimento.slice(-2):'';
+  const html=`
+    <div class="gGrid">
+      ${gF('Nome','lc_nome',l.nome)}
+      ${gS('Categoria','lc_cat',l.categoria,cats)}
+      ${gFm('Valor','lc_valor',l.valor_cents)}
+      ${fixa
+        ? gF('Dia do vencimento','lc_dia',dia,'number','min="1" max="31"')
+        : gF('Vencimento','lc_venc',l.vencimento||'','date')}
+      ${gF('Responsável','lc_resp',l.responsavel||'')}
+      ${gT('Observação','lc_obs',l.obs||'')}
+      ${escopoCampo(l,'editar')}
+    </div>
+    ${l.origem==='folha'?'<p class="hint" style="margin-top:10px">Lançamento gerado pelo fechamento da folha. Editar aqui não recalcula a folha.</p>':''}
+    <div class="mFoot">
+      <button class="btn sec" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" id="lcBtn" onclick="salvarLancamento(${l.id})">Salvar</button>
+    </div>`;
+  openModal((fixa?'Despesa fixa · ':'Despesa · ')+l.nome+' · '+compLabel(l.competencia),html);
+}
+
+async function salvarLancamento(id){
+  const l=(contasLanc||[]).find(x=>x.id===id);
+  if(!l) return toast('Lançamento não encontrado');
+  const nome=capTitulo(gv('lc_nome'));
+  if(!nome) return toast('Dê um nome à despesa');
+  const btn=document.getElementById('lcBtn'); if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  try{
+    if(l.recorrente_id){
+      const escopo=gv('lc_escopo')||'mes';
+      const dia=gvi('lc_dia');
+      const r=await db.rpc('fin_fixa_aplicar',{
+        p_lancamento_id:id, p_escopo:escopo, p_nome:nome, p_categoria:gv('lc_cat'),
+        p_valor_cents:parseBRL(gv('lc_valor')), p_dia:(dia&&dia>=1&&dia<=31)?dia:null,
+        p_responsavel:capTitulo(gv('lc_resp'))||null, p_obs:gv('lc_obs')||null
+      });
+      const n=(r&&(r.rotulo||r.valor))||0;
+      toast(escopo==='mes'?'Lançamento atualizado':`Atualizado, mais ${n} lançamento${n===1?'':'s'} da fixa`);
+    }else{
+      await db.upd('fin_lancamentos','id=eq.'+id,{
+        nome, categoria:gv('lc_cat'), valor_cents:parseBRL(gv('lc_valor')),
+        vencimento:gv('lc_venc')||null, responsavel:capTitulo(gv('lc_resp'))||null,
+        obs:gv('lc_obs')||null
+      });
+      toast('Lançamento atualizado');
+    }
+    fecharModal(); render();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='Salvar'; }
+    toast(e.message||'Não deu para salvar');
   }
-  if(!confirm('Excluir esse lançamento?'))return;
-  await db.del('fin_lancamentos','id=eq.'+id); render();
+}
+
+async function excluirLancamento(id){
+  const l=(contasLanc||[]).find(x=>x.id===id);
+  if(!l) return toast('Lançamento não encontrado');
+  if(!l.recorrente_id){
+    if(!confirm(`Excluir "${l.nome}" de ${compLabel(l.competencia)}?`)) return;
+    await db.del('fin_lancamentos','id=eq.'+id); toast('Lançamento excluído'); return render();
+  }
+  modalCtx=null;
+  let resumo='';
+  try{
+    const irmaos=await db.get('fin_lancamentos',`recorrente_id=eq.${l.recorrente_id}&select=competencia,status`);
+    const pagos=irmaos.filter(x=>x.status==='pago').length;
+    resumo=`<p class="hint">Esta fixa tem ${irmaos.length} lançamento${irmaos.length===1?'':'s'} no sistema${pagos?`, ${pagos} já pago${pagos===1?'':'s'}`:''}.</p>`;
+  }catch(e){ console.warn(e); }
+  const html=`
+    <p style="margin-bottom:12px"><b>${esc(l.nome)}</b> · ${compLabel(l.competencia)} · ${fmt(l.valor_cents)}</p>
+    ${resumo}
+    <div class="gGrid" style="margin-top:12px">${escopoCampo(l,'excluir')}</div>
+    <div class="mFoot">
+      <button class="btn sec" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" id="lcDelBtn" onclick="confirmarExcluirLancamento(${l.id})">Excluir</button>
+    </div>`;
+  openModal('Excluir despesa fixa',html);
+}
+
+async function confirmarExcluirLancamento(id){
+  const escopo=gv('lc_escopo')||'mes';
+  const btn=document.getElementById('lcDelBtn'); if(btn){ btn.disabled=true; btn.textContent='Excluindo…'; }
+  try{
+    const r=await db.rpc('fin_fixa_excluir',{p_lancamento_id:id,p_escopo:escopo});
+    const ap=(r&&r.apagados)||0, pg=(r&&r.pagos_mantidos)||0;
+    fecharModal();
+    toast(`${ap} lançamento${ap===1?'':'s'} excluído${ap===1?'':'s'}${pg?` · ${pg} pago${pg===1?'':'s'} mantido${pg===1?'':'s'} no histórico`:''}`);
+    render();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='Excluir'; }
+    toast(e.message||'Não deu para excluir');
+  }
 }
 async function addAvulsa(tipo){
   const nome=capTitulo(avNome.value); if(!nome) return toast('Dê um nome à despesa');
@@ -1764,9 +1854,9 @@ function drawFolha(el,fechada){
       ? `<input class="mini money" ${dis} value="${temBaseManual(r)?moneyVal(r.base_manual_cents):''}" placeholder="${moneyVal(Math.round((r.horas||0)*(f.valor_hora_cents||0)))}" title="Digite o valor do mês; as horas saem daqui" onchange="fBaseProf(${f.id},this.value)">
          <div class="hint">${f.valor_hora_cents?`${fmtH(horasDe(f,r))} h · ${fmt(f.valor_hora_cents)}/h`:'sem valor/hora cadastrado'}</div>`
       : f.comissao_tipo==='matricula'
-        ? `<input class="mini2" ${dis} value="${r.matriculas||0}" onchange="fEdit(${f.id},'matriculas',parseInt(this.value)||0)"> mat`
+        ? `<div class="prodCell"><input class="mini2" ${dis} value="${r.matriculas||0}" onchange="fEdit(${f.id},'matriculas',parseInt(this.value)||0)"><span class="suf">mat</span></div>`
         : f.comissao_tipo==='pagamentos'
-          ? `<input class="mini2" ${dis} value="${r.pagamentos||0}" onchange="fEdit(${f.id},'pagamentos',parseInt(this.value)||0)"> pg`
+          ? `<div class="prodCell"><input class="mini2" ${dis} value="${r.pagamentos||0}" onchange="fEdit(${f.id},'pagamentos',parseInt(this.value)||0)"><span class="suf">pg</span></div>`
           : f.comissao_tipo==='coord_comercial' ? `<span class="hint">50% do Comercial</span>` : '—';
     const acoes=`
       <button class="ico" title="Remuneração e benefícios" onclick="abrirRemuneracao(${f.id})">✏️</button>
@@ -1787,6 +1877,9 @@ function drawFolha(el,fechada){
       <td class="acoes">${acoes}</td></tr>`;
   };
 
+  const cols=`<colgroup><col style="width:17%"><col style="width:11%"><col style="width:9%">
+    <col style="width:12%"><col style="width:7.5%"><col style="width:7.5%"><col style="width:7%">
+    <col style="width:11%"><col style="width:9%"><col style="width:9%"><col style="width:110px"></colgroup>`;
   const head=`<thead><tr><th>Funcionário</th><th class="num">Produção</th><th class="num">Base</th>
     <th class="num">Comissão</th><th class="num">Desc. VT</th><th class="num">iFood</th><th class="num">Plano</th>
     <th class="num">Adiantamento</th><th class="num">Líquido</th><th class="num">Custo total</th><th></th></tr></thead>`;
@@ -1796,7 +1889,7 @@ function drawFolha(el,fechada){
     if(!lista.length) return '';
     return `<div class="panel"><div class="panelHead"><h2>${setor}</h2>
       <span class="hint">${lista.length} ${lista.length===1?'pessoa':'pessoas'}</span></div>
-      <div class="tableWrap"><table class="tFolha">${head}<tbody>${lista.map(rowHTML).join('')}</tbody></table></div></div>`;
+      <div class="tableWrap"><table class="tFolha">${cols}${head}<tbody>${lista.map(rowHTML).join('')}</tbody></table></div></div>`;
   }).join('');
 
   el.innerHTML=`
