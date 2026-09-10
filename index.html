@@ -1517,6 +1517,24 @@ function comMatCents(){
   return (c.valor_cents!=null?+c.valor_cents:(c.valor!=null?+c.valor:5000));
 }
 function comPagCents(){ return +((S.cfg.comissao_pagamento||{}).valor_cents||0); }
+/* Comissao extra por matricula (decisao 10/09/2026): paga FORA da folha.
+   Nao gera DSR, nao tem encargo, nao vai para o PDF do contador; entra so no
+   custo total e no contas a pagar. A Coordenacao comercial recebe 50% dela,
+   do mesmo jeito que recebe 50% da comissao de matricula da folha. */
+function comExtraCents(){ return +((S.cfg.comissao_extra||{}).valor_cents||0); }
+function comissaoExtraDe(f,r,todos,rows){
+  const vX=comExtraCents();
+  if(!vX) return 0;
+  switch(f.comissao_tipo){
+    case 'matricula': return (r.matriculas||0)*vX;
+    case 'coord_comercial': {
+      let base=0;
+      (todos||[]).filter(x=>x.comissao_tipo==='matricula').forEach(x=>{ base+=(((rows||{})[x.id]||{}).matriculas||0)*vX; });
+      return Math.round(base*0.5);
+    }
+    default: return 0;
+  }
+}
 function comissaoDe(f,r,todos,rows){
   const vMat=comMatCents();
   const vPag=comPagCents();
@@ -1540,10 +1558,11 @@ function calcRow(f,r,todos,rows){
   const cfg=S.cfg;
   const dsrCfg=dsrDoMes();
   const prov=cfg.provisoes||{ferias_divisor:9,decimo_divisor:12};
-  let base=0, comissao=0, dsr=0;
+  let base=0, comissao=0, dsr=0, extra=0;
   if(f.tipo==='mensalista'){
     base=f.salario_cents||0;
     comissao=comissaoDe(f,r,todos,rows);
+    extra=comissaoExtraDe(f,r,todos,rows);
     dsr = comissao>0 ? Math.round(comissao*(dsrCfg.dias_descanso/dsrCfg.dias_uteis)) : 0;
   } else {
     // Professores: o valor do mes e o dado digitado; as horas sao derivadas.
@@ -1563,9 +1582,9 @@ function calcRow(f,r,todos,rows){
   const ferias=Math.round(bruto/prov.ferias_divisor);
   const decimo=Math.round(bruto/prov.decimo_divisor);
   const fgtsProv=Math.round((ferias+decimo)*(cfg.fgts_aliquota||0.08));
-  const custo=bruto+fgts+ferias+decimo+fgtsProv+(f.ifood_cents||0)+(f.vt_cents||0);
+  const custo=bruto+fgts+ferias+decimo+fgtsProv+(f.ifood_cents||0)+(f.vt_cents||0)+extra;
   const _n=v=>Number.isFinite(v)?v:0;
-  return {salario_base_cents:_n(base),comissao_cents:_n(comissao),dsr_cents:_n(dsr),bruto_cents:_n(bruto),inss_cents:0,vt_desconto_cents:_n(vtDesc),liquido_cents:_n(liquido),liquido_contador_cents:_n(liqCont),fgts_cents:_n(fgts),ferias_prov_cents:_n(ferias),decimo_prov_cents:_n(decimo),custo_total_cents:_n(custo)};
+  return {salario_base_cents:_n(base),comissao_cents:_n(comissao),dsr_cents:_n(dsr),bruto_cents:_n(bruto),inss_cents:0,vt_desconto_cents:_n(vtDesc),liquido_cents:_n(liquido),liquido_contador_cents:_n(liqCont),fgts_cents:_n(fgts),ferias_prov_cents:_n(ferias),decimo_prov_cents:_n(decimo),custo_total_cents:_n(custo),comissao_extra_cents:_n(extra)};
 }
 
 /* ================= RESUMO ================= */
@@ -1840,14 +1859,14 @@ function drawFolha(el,fechada){
   folhaData.fechada=fechada;
   const {funcs,todos}=folhaData;
   const funcoes=S.cfg.funcoes||[];
-  let totL=0,totC=0,totI=0,totV=0,totF=0,totProv=0,totAd=0,totVtD=0;
+  let totL=0,totC=0,totI=0,totV=0,totF=0,totProv=0,totAd=0,totVtD=0,totX=0;
 
   const rowHTML=f=>{
     const r=folhaData.rows[f.id]||{};
     const k=calcRow(f,r,funcs,folhaData.rows);
     if(f.ativo){ totL+=k.liquido_cents; totC+=k.custo_total_cents; totI+=f.ifood_cents||0; totV+=f.vt_cents||0;
       totF+=k.fgts_cents; totProv+=k.ferias_prov_cents+k.decimo_prov_cents;
-      totAd+=r.adiantamento_cents||0; totVtD+=k.vt_desconto_cents; }
+      totAd+=r.adiantamento_cents||0; totVtD+=k.vt_desconto_cents; totX+=k.comissao_extra_cents||0; }
     const dis=fechada?'disabled':'';
     const prof=f.tipo==='horista';
     const producao = prof
@@ -1868,6 +1887,7 @@ function drawFolha(el,fechada){
       <td class="num">${producao}</td>
       <td class="num">${fmt(k.salario_base_cents)}</td>
       <td class="num">${prof?'—':`<input class="mini money" ${dis} value="${moneyVal(k.comissao_cents)}" title="Apagar volta ao cálculo automático" onchange="fComissao(${f.id},this.value)">${k.dsr_cents?`<div class="hint">DSR ${fmt(k.dsr_cents)}</div>`:''}<div class="hint">${(r.comissao_manual_cents!=null&&r.comissao_manual_cents!=='')?'manual':'automático'}</div>`}</td>
+      <td class="num">${k.comissao_extra_cents?`${fmt(k.comissao_extra_cents)}<div class="hint">fora da folha</div>`:'—'}</td>
       <td class="num">${k.vt_desconto_cents?fmt(k.vt_desconto_cents):'—'}</td>
       <td class="num">${f.ifood_cents?fmt(f.ifood_cents):'—'}</td>
       <td class="num">${f.plano_saude_cents?fmt(f.plano_saude_cents):'—'}</td>
@@ -1877,11 +1897,11 @@ function drawFolha(el,fechada){
       <td class="acoes">${acoes}</td></tr>`;
   };
 
-  const cols=`<colgroup><col style="width:17%"><col style="width:11%"><col style="width:9%">
-    <col style="width:12%"><col style="width:7.5%"><col style="width:7.5%"><col style="width:7%">
-    <col style="width:11%"><col style="width:9%"><col style="width:9%"><col style="width:110px"></colgroup>`;
+  const cols=`<colgroup><col style="width:15%"><col style="width:10%"><col style="width:8.5%">
+    <col style="width:11%"><col style="width:8%"><col style="width:7%"><col style="width:7%"><col style="width:6.5%">
+    <col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:110px"></colgroup>`;
   const head=`<thead><tr><th>Funcionário</th><th class="num">Produção</th><th class="num">Base</th>
-    <th class="num">Comissão</th><th class="num">Desc. VT</th><th class="num">iFood</th><th class="num">Plano</th>
+    <th class="num">Comissão</th><th class="num">Extra</th><th class="num">Desc. VT</th><th class="num">iFood</th><th class="num">Plano</th>
     <th class="num">Adiantamento</th><th class="num">Líquido</th><th class="num">Custo total</th><th></th></tr></thead>`;
 
   const blocos=SETORES.map(setor=>{
@@ -1920,6 +1940,7 @@ function drawFolha(el,fechada){
     <div class="card"><small>Total líquido (salários)</small><div class="v red">${fmt(totL)}</div><div class="d">a pagar dia 5 do mês seguinte</div></div>
     <div class="card"><small>iFood</small><div class="v">${fmt(totI)}</div></div>
     <div class="card"><small>Vale transporte</small><div class="v">${fmt(totV)}</div><div class="d">carga do cartão, desconto de ${fmt(totVtD)}</div></div>
+    <div class="card"><small>Comissão extra</small><div class="v">${fmt(totX)}</div><div class="d">paga fora da folha, sem DSR</div></div>
     <div class="card"><small>Adiantamentos</small><div class="v">${fmt(totAd)}</div><div class="d">descontados do líquido</div></div>
     <div class="card"><small>FGTS do mês</small><div class="v blue">${fmt(totF)}</div></div>
     <div class="card"><small>Provisões férias + 13º</small><div class="v blue">${fmt(totProv)}</div><div class="d">não-caixa</div></div>
@@ -1943,6 +1964,8 @@ function painelParametros(){
   <div class="grid3">
     <div class="field"><label>Comissão por matrícula (R$)</label>
       <input id="cfComMat" class="money" value="${moneyVal(comMatCents())}"></div>
+    <div class="field"><label>Comissão extra por matrícula (R$, fora da folha)</label>
+      <input id="cfComExtra" class="money" value="${moneyVal(comExtraCents())}"></div>
     <div class="field"><label>Comissão por pagamento (R$)</label>
       <input id="cfComPag" class="money" value="${moneyVal(comPagCents())}"></div>
     <div class="field"><label>DSR: dias úteis</label><input id="cfDU" type="number" placeholder="${d.cal.uteis} (automático)" value="${(cfg.dsr||{}).dias_uteis!=null&&(cfg.dsr||{}).dias_uteis!==''?(cfg.dsr||{}).dias_uteis:''}"></div>
@@ -1952,7 +1975,7 @@ function painelParametros(){
   </div>
   <p class="hint" style="margin:8px 0 12px"><b>Calendário de ${compLabel(S.comp)}:</b> ${d.cal.uteis} dias úteis e ${d.cal.descanso} de descanso (domingos + feriados). ${esc(ferTxt)}.
     ${d.manual?`<b style="color:var(--redDark)">Em uso agora: ${d.dias_uteis} úteis e ${d.dias_descanso} de descanso, digitados à mão.</b> Apague os dois campos para voltar ao automático.`:'Os dois campos abaixo estão em automático: o cálculo acompanha o mês sozinho. Preencher um deles congela o valor para todos os meses.'}</p>
-  <p class="hint" style="margin:8px 0 12px">A comissão por matrícula vale para o Comercial e é a base dos 50% da Coordenação. A comissão por pagamento vale para o Administrativo. Na tabela da folha, digitar um valor na coluna Comissão sobrepõe o cálculo automático daquela pessoa; apagar volta ao automático. O vale transporte é descontado sobre salário + comissão, só de quem tem VT cadastrado. O INSS não entra na folha: é recolhido por guia depois. Provisão de férias em 1/9 (férias + terço).</p>
+  <p class="hint" style="margin:8px 0 12px">A comissão por matrícula vale para o Comercial, entra na folha e gera DSR. A comissão extra por matrícula é paga fora da folha: não gera DSR, não tem encargo e não sai no PDF do contador, só no custo total e no contas a pagar. A Coordenação comercial recebe 50% das duas. A comissão por pagamento vale para o Administrativo. Na tabela da folha, digitar um valor na coluna Comissão sobrepõe o cálculo automático daquela pessoa; apagar volta ao automático. O vale transporte é descontado sobre salário + comissão, só de quem tem VT cadastrado. O INSS não entra na folha: é recolhido por guia depois. Provisão de férias em 1/9 (férias + terço).</p>
   <button class="btn" onclick="salvaCfg()">Salvar parâmetros</button></div>`;
 }
 /* Cadastro e remuneracao saem da linha da tabela e vao para modal (regra 1).
@@ -2100,12 +2123,12 @@ async function salvarFolha(fechar){
   const c=S.comp;
   const payload=folhaData.funcs.map(f=>{
     const r=folhaData.rows[f.id], k=calcRow(f,r,folhaData.funcs,folhaData.rows);
-    return {unidade:S.unidade,competencia:c,funcionario_id:f.id,horas:horasDe(f,r),base_manual_cents:temBaseManual(r)?(+r.base_manual_cents||0):null,matriculas:r.matriculas||0,comissao_manual_cents:r.comissao_manual_cents,adiantamento_cents:r.adiantamento_cents||0,desconto_vale_cents:r.desconto_vale_cents||0,ajuste_cents:r.ajuste_cents||0,obs:r.obs,...k,fechada:!!fechar,updated_at:new Date().toISOString()};
+    return {unidade:S.unidade,competencia:c,funcionario_id:f.id,horas:horasDe(f,r),base_manual_cents:temBaseManual(r)?(+r.base_manual_cents||0):null,matriculas:r.matriculas||0,pagamentos:r.pagamentos||0,comissao_manual_cents:r.comissao_manual_cents,adiantamento_cents:r.adiantamento_cents||0,desconto_vale_cents:r.desconto_vale_cents||0,ajuste_cents:r.ajuste_cents||0,obs:r.obs,...k,fechada:!!fechar,updated_at:new Date().toISOString()};
   });
   await db.upsert('fin_folha',payload,'competencia,funcionario_id');
   if(fechar){
-    let totL=0,totI=0,totV=0;
-    folhaData.funcs.forEach(f=>{ const k=calcRow(f,folhaData.rows[f.id],folhaData.funcs,folhaData.rows); totL+=k.liquido_cents; totI+=f.ifood_cents||0; totV+=f.vt_cents||0; });
+    let totL=0,totI=0,totV=0,totX=0;
+    folhaData.funcs.forEach(f=>{ const k=calcRow(f,folhaData.rows[f.id],folhaData.funcs,folhaData.rows); totL+=k.liquido_cents; totI+=f.ifood_cents||0; totV+=f.vt_cents||0; totX+=k.comissao_extra_cents||0; });
     const prox=nextComp(c,1);
     const itens=[
       {nome:'Folha de pagamento (líquidos)',valor:totL,venc:`${prox}-05`},
@@ -2117,6 +2140,11 @@ async function salvarFolha(fechar){
       if(ex.length) await db.upd('fin_lancamentos','id=eq.'+ex[0].id,{valor_cents:it.valor,vencimento:it.venc});
       else await db.ins('fin_lancamentos',[{unidade:S.unidade,competencia:c,tipo:'despesa',origem:'folha',nome:it.nome,categoria:'Pessoal',valor_cents:it.valor,vencimento:it.venc}]);
     }
+    // Comissao extra: lancamento proprio, so quando existe (ou quando ja havia e precisa zerar)
+    { const nomeX='Comissão extra (fora da folha)';
+      const exX=await db.get('fin_lancamentos',`unidade=eq.${S.unidade}&competencia=eq.${c}&origem=eq.folha&nome=eq.${encodeURIComponent(nomeX)}&select=id`);
+      if(exX.length) await db.upd('fin_lancamentos','id=eq.'+exX[0].id,{valor_cents:totX,vencimento:`${prox}-05`});
+      else if(totX>0) await db.ins('fin_lancamentos',[{unidade:S.unidade,competencia:c,tipo:'despesa',origem:'folha',nome:nomeX,categoria:'Pessoal',valor_cents:totX,vencimento:`${prox}-05`}]); }
     for(const v of folhaData.vales){
       const r=folhaData.rows[v.funcionario_id];
       if(r && (r.desconto_vale_cents||0)>0 && v.parcelas_pagas<v.parcelas_total)
@@ -2300,17 +2328,19 @@ async function salvaCfg(){
   const _du=String(cfDU.value).trim(), _dd=String(cfDD.value).trim();
   const dsr={dias_uteis:(_du===''?null:+_du||null),dias_descanso:(_dd===''?null:+_dd)};
   const simples={...(S.cfg.simples||{}),aliquota_efetiva:(parseFloat(String(cfAliq.value).replace(',','.'))||0)/100};
-  const comMat={valor_cents:parseBRL(cfComMat.value)};
+  const comMat={...(S.cfg.comissao_matricula||{}),valor_cents:parseBRL(cfComMat.value)};
+  const comExtra={...(S.cfg.comissao_extra||{}),valor_cents:parseBRL(cfComExtra.value)};
   const comPag={...(S.cfg.comissao_pagamento||{}),valor_cents:parseBRL(cfComPag.value)};
   const updates=[
     {chave:'comissao_matricula',valor:comMat},
     {chave:'comissao_pagamento',valor:comPag},
+    {chave:'comissao_extra',valor:comExtra},
     {chave:'dsr',valor:dsr},
     {chave:'simples',valor:simples},
     {chave:'vt_aliquota',valor:vtAliq}
   ];
   for(const u of updates){ await db.upd('fin_config','unidade=eq.'+S.unidade+'&chave=eq.'+u.chave,{valor:u.valor,updated_at:new Date().toISOString()}); }
-  S.cfg.comissao_matricula=comMat; S.cfg.comissao_pagamento=comPag;
+  S.cfg.comissao_matricula=comMat; S.cfg.comissao_pagamento=comPag; S.cfg.comissao_extra=comExtra;
   S.cfg.dsr=dsr; S.cfg.simples=simples; S.cfg.vt_aliquota=vtAliq;
   toast('Parâmetros salvos'); render();
 }
