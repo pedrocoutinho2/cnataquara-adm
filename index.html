@@ -849,6 +849,7 @@ main.wide{max-width:1500px}
   <div class="filtros">
     <label class="campo"><span>Pessoa</span><select id="e-pessoa"></select></label>
     <label class="campo"><span>Mês</span><input type="month" id="e-mes"></label>
+    <button class="leve" id="btn-evento">Hora extra de evento</button>
     <button class="leve" id="btn-fechar-mes">Fechar mês no banco</button>
     <button class="leve" id="btn-csv">Exportar CSV</button>
   </div>
@@ -1135,9 +1136,11 @@ main.wide{max-width:1500px}
         <option value="folga">Folga</option>
         <option value="ferias">Férias</option>
         <option value="compensacao">Compensar saldo do banco</option>
+        <option value="evento">Hora extra de evento</option>
       </select>
     </label>
-    <label class="campo" id="a-wrap-hora"><span>Horário</span><input type="time" id="a-hora"></label>
+    <label class="campo" id="a-wrap-hora"><span id="a-rot-hora">Horário</span><input type="time" id="a-hora"></label>
+    <label class="campo" id="a-wrap-fim" hidden><span>Fim</span><input type="time" id="a-fim"></label>
     <label class="campo" id="a-wrap-dias" hidden><span>Quantos dias de atestado</span>
       <input type="number" id="a-dias" step="1" min="1" max="180" value="1"></label>
     <p class="nota" id="a-dica-atestado" hidden style="margin:-8px 0 16px">Contados em dias
@@ -1155,6 +1158,29 @@ main.wide{max-width:1500px}
   <div class="rodape">
     <button class="leve" data-fecha="dlg-ajuste">Fechar</button>
     <button class="acao" id="dlg-ajuste-salvar">Registrar ajuste</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-evento">
+  <h2>Hora extra de evento</h2>
+  <div class="corpo">
+    <p class="nota" style="margin-bottom:14px">Para trabalho fora do relógio: evento, feira, ação em
+    escola. As horas somam ao trabalhado do dia de cada pessoa e entram no banco. Depois dá para
+    alterar ou cancelar em Ajustar, no dia do evento.</p>
+    <label class="campo"><span>Nome do evento</span><input type="text" id="ev-nome" placeholder="Ex.: Feira de profissões"></label>
+    <label class="campo"><span>Data</span><input type="date" id="ev-data"></label>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <label class="campo" style="flex:1;min-width:120px"><span>Início</span><input type="time" id="ev-ini"></label>
+      <label class="campo" style="flex:1;min-width:120px"><span>Fim</span><input type="time" id="ev-fim"></label>
+    </div>
+    <p class="rotulo" style="margin:4px 0 8px">Quem trabalhou</p>
+    <div id="ev-pessoas"></div>
+    <p class="nota" id="ev-resumo" style="margin-top:10px"></p>
+    <p class="erro" id="ev-erro"></p>
+  </div>
+  <div class="rodape">
+    <button class="leve" data-fecha="dlg-evento">Fechar</button>
+    <button class="acao" id="ev-salvar">Lançar hora extra</button>
   </div>
 </dialog>
 
@@ -4380,7 +4406,7 @@ $('t-espelho').onclick = async (ev) => {
   $('dlg-ajuste-contexto').textContent =
     `${$('e-pessoa').selectedOptions[0].textContent} · ${d.split('-').reverse().join('/')}`;
   $('a-just').value = ''; $('a-hora').value = ''; $('a-min').value = '';
-  editAjuste = null; $('a-tipo').disabled = false;
+  editAjuste = null; $('a-tipo').disabled = false; $('a-fim').value = '';
   $('dlg-ajuste-salvar').textContent = 'Registrar ajuste';
   $('a-dias').value = '1'; $('a-tipo').value = 'insercao'; $('a-tipo').onchange();
   $('dlg-ajuste-erro').textContent = '';
@@ -4398,11 +4424,22 @@ $('t-espelho').onclick = async (ev) => {
 let editAjuste = null;      // { kind:'ajuste'|'arp', id, rotulo }
 let AJUSTES_DIA = [];
 const TIPO_ROTULO = { insercao:'Marcação inserida', desconsiderar:'Marcação desconsiderada',
-  abono:'Abono', atestado:'Atestado', ferias:'Férias', folga:'Folga', compensacao:'Compensação' };
+  abono:'Abono', atestado:'Atestado', ferias:'Férias', folga:'Folga', compensacao:'Compensação',
+  evento:'Hora extra de evento' };
 const horaInput = (iso) => new Intl.DateTimeFormat('pt-BR',
   { timeZone:CFG.tz, hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date(iso));
 
+const minutosEntre = (ini, fim) => {
+  const [h1, m1] = ini.split(':').map(Number), [h2, m2] = fim.split(':').map(Number);
+  const m = (h2 * 60 + m2) - (h1 * 60 + m1);
+  return m <= 0 ? m + 1440 : m;     // fim antes do início = passou da meia-noite
+};
+const detalheAjuste = (a) => a.tipo === 'evento' && a.horario
+  ? ` · ${horaInput(a.horario)} às ${horaInput(new Date(new Date(a.horario).getTime() + (a.minutos ?? 0) * 60000))} (${hm(a.minutos)})`
+  : a.horario ? ` · ${horaInput(a.horario)}` : a.minutos ? ` · ${hm(a.minutos)}` : '';
+
 function limparFormAjuste(){
+  $('a-fim').value = '';
   $('a-just').value = ''; $('a-hora').value = ''; $('a-min').value = '';
   $('a-dias').value = '1'; $('a-tipo').value = 'insercao'; $('a-tipo').disabled = false;
   $('dlg-ajuste-erro').textContent = '';
@@ -4448,7 +4485,7 @@ async function listarAjustesDoDia(){
   if (vivos.length){
     html += `<p class="rotulo" style="margin-bottom:8px">Ajustes já lançados</p>`
       + vivos.map(a => linha(a.id,
-          `${esc(TIPO_ROTULO[a.tipo] ?? a.tipo)}${a.horario ? ` · ${horaInput(a.horario)}` : a.minutos ? ` · ${hm(a.minutos)}` : ''}`,
+          `${esc(TIPO_ROTULO[a.tipo] ?? a.tipo)}${detalheAjuste(a)}`,
           esc(a.justificativa),
           (a.tipo === 'desconsiderar' ? '' : bt('data-alterar', a.id, 'Alterar'))
             + bt('data-cancelar', a.id, 'Cancelar', 'btn danger'),
@@ -4489,10 +4526,12 @@ $('ajustes-do-dia').onclick = async (ev) => {
     const a = AJUSTES_DIA.find(x => x.id === d.alterar); if (!a) return;
     limparFormAjuste();
     editAjuste = { kind:'ajuste', id:a.id,
-      rotulo:`${TIPO_ROTULO[a.tipo] ?? a.tipo}${a.horario ? ' · ' + horaInput(a.horario) : a.minutos ? ' · ' + hm(a.minutos) : ''}` };
+      rotulo:`${TIPO_ROTULO[a.tipo] ?? a.tipo}${detalheAjuste(a)}` };
     $('a-tipo').value = a.tipo;
     if (a.horario) $('a-hora').value = horaInput(a.horario);
     if (a.minutos) $('a-min').value = a.minutos;
+    if (a.tipo === 'evento' && a.horario && a.minutos)
+      $('a-fim').value = horaInput(new Date(new Date(a.horario).getTime() + a.minutos * 60000));
     $('a-just').value = a.justificativa ?? '';
     $('dlg-ajuste-salvar').textContent = 'Salvar alteração';
     $('a-tipo').onchange();
@@ -4517,10 +4556,13 @@ $('ajustes-do-dia').onclick = async (ev) => {
 $('a-tipo').onchange = () => {
   const t = $('a-tipo').value;
   const atestadoNovo = t === 'atestado' && !editAjuste;
-  $('a-wrap-hora').hidden     = t !== 'insercao';
+  const evento = t === 'evento';
+  $('a-wrap-hora').hidden     = t !== 'insercao' && !evento;
+  $('a-rot-hora').textContent = evento ? 'Início' : 'Horário';
+  $('a-wrap-fim').hidden      = !evento;
   $('a-wrap-dias').hidden     = !atestadoNovo;
   $('a-dica-atestado').hidden = !atestadoNovo;
-  $('a-wrap-min').hidden      = t === 'insercao' || atestadoNovo;
+  $('a-wrap-min').hidden      = t === 'insercao' || evento || atestadoNovo;
 };
 
 $('dlg-ajuste-salvar').onclick = async () => {
@@ -4531,7 +4573,7 @@ $('dlg-ajuste-salvar').onclick = async () => {
   if (just.length < 5) return (err.textContent = 'Escreva a justificativa — ela fica registrada com seu nome.');
 
   if (editAjuste){
-    const precisaHora = editAjuste.kind === 'arp' || tipo === 'insercao';
+    const precisaHora = editAjuste.kind === 'arp' || tipo === 'insercao' || tipo === 'evento';
     if (precisaHora && !$('a-hora').value) return (err.textContent = 'Informe o horário da marcação.');
     const horario = $('a-hora').value
       ? new Date(`${ajustando.data}T${$('a-hora').value}:00-03:00`).toISOString() : null;
@@ -4539,10 +4581,14 @@ $('dlg-ajuste-salvar').onclick = async () => {
     if (editAjuste.kind === 'arp'){
       chamada = P.rpc('corrigir_marcacao', { p_arp: editAjuste.id, p_horario: horario, p_justificativa: just });
     } else {
-      const min = Number($('a-min').value || 0);
+      let min = Number($('a-min').value || 0);
+      if (tipo === 'evento'){
+        if (!$('a-fim').value) return (err.textContent = 'Informe o fim do evento.');
+        min = minutosEntre($('a-hora').value, $('a-fim').value);
+      }
       if (tipo !== 'insercao' && min <= 0) return (err.textContent = 'Informe quantos minutos.');
       chamada = P.rpc('alterar_ajuste', { p_ajuste: editAjuste.id, p_tipo: tipo,
-        p_horario: tipo === 'insercao' ? horario : null,
+        p_horario: (tipo === 'insercao' || tipo === 'evento') ? horario : null,
         p_minutos: tipo === 'insercao' ? null : min, p_justificativa: just });
     }
     err.textContent = '';
@@ -4576,6 +4622,15 @@ $('dlg-ajuste-salvar').onclick = async () => {
     return;
   }
 
+  if (tipo === 'evento'){
+    if (!$('a-hora').value || !$('a-fim').value) return (err.textContent = 'Informe início e fim do evento.');
+    err.textContent = '';
+    const r = await escrever(P.rpc('lancar_evento', { p_emps:[ajustando.emp], p_data:ajustando.data,
+      p_inicio:$('a-hora').value, p_fim:$('a-fim').value, p_nome:just }), 'Hora extra de evento lançada.');
+    if (r){ $('dlg-ajuste').close(); carregarEspelho(); }
+    return;
+  }
+
   const reg = { empregado_id: ajustando.emp, data: ajustando.data, tipo,
                 justificativa: just, criado_por: EU.id };
   if (tipo === 'insercao'){
@@ -4590,6 +4645,51 @@ $('dlg-ajuste-salvar').onclick = async () => {
   if (await escrever(P.from('ajustes').insert(reg), 'Ajuste registrado.')){
     $('dlg-ajuste').close(); carregarEspelho();
   }
+};
+
+/* Hora extra de evento para várias pessoas de uma vez. Cada pessoa recebe um
+   ajuste tipo 'evento' (início + duração) que soma ao trabalhado do dia, ao
+   adicional noturno e ao banco. Alterar e cancelar ficam no Ajustar do dia. */
+function resumoEvento(){
+  const i = $('ev-ini').value, f = $('ev-fim').value;
+  const n = $('ev-pessoas').querySelectorAll('input:checked').length;
+  if (!i || !f){ $('ev-resumo').textContent = ''; return; }
+  const min = minutosEntre(i, f);
+  const vira = f <= i;
+  $('ev-resumo').textContent = `${hm(min)} por pessoa${vira ? ', terminando no dia seguinte' : ''}`
+    + `${n ? ` · ${n} pessoa(s)` : ''}.`;
+}
+$('btn-evento').onclick = async () => {
+  await garantirEquipe();
+  const atual = $('e-pessoa').value;
+  $('ev-nome').value = ''; $('ev-ini').value = ''; $('ev-fim').value = ''; $('ev-erro').textContent = '';
+  $('ev-data').value = new Intl.DateTimeFormat('en-CA', { timeZone: CFG.tz }).format(new Date());
+  $('ev-pessoas').innerHTML = comPonto().map(e => `
+    <label style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:14px;cursor:pointer">
+      <input type="checkbox" value="${e.id}" ${e.id === atual ? 'checked' : ''}> ${esc(e.nome)}
+    </label>`).join('') || '<p class="mudo">Nenhuma pessoa sujeita a controle de ponto.</p>';
+  resumoEvento();
+  $('dlg-evento').showModal();
+};
+$('ev-ini').oninput = resumoEvento;
+$('ev-fim').oninput = resumoEvento;
+$('ev-pessoas').onchange = resumoEvento;
+$('ev-salvar').onclick = async () => {
+  const err = $('ev-erro');
+  const pessoas = [...$('ev-pessoas').querySelectorAll('input:checked')].map(c => c.value);
+  const nome = $('ev-nome').value.trim();
+  if (nome.length < 3) return (err.textContent = 'Informe o nome do evento.');
+  if (!$('ev-data').value) return (err.textContent = 'Informe a data.');
+  if (!$('ev-ini').value || !$('ev-fim').value) return (err.textContent = 'Informe início e fim.');
+  if (!pessoas.length) return (err.textContent = 'Marque quem trabalhou no evento.');
+  err.textContent = '';
+  const btn = $('ev-salvar'); btn.disabled = true; btn.textContent = 'Lançando…';
+  const { data: r, error } = await P.rpc('lancar_evento', { p_emps: pessoas, p_data: $('ev-data').value,
+    p_inicio: $('ev-ini').value, p_fim: $('ev-fim').value, p_nome: nome });
+  btn.disabled = false; btn.textContent = 'Lançar hora extra';
+  if (error) return (err.textContent = traduzir(error.message));
+  recado(`${hm(r.minutos)} lançadas para ${r.pessoas} pessoa(s).`, 'ok');
+  $('dlg-evento').close(); carregarEspelho();
 };
 
 $('btn-fechar-mes').onclick = async () => {
