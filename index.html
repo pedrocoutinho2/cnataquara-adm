@@ -1173,8 +1173,16 @@ main.wide{max-width:1500px}
       <label class="campo" style="flex:1;min-width:120px"><span>Início</span><input type="time" id="ev-ini"></label>
       <label class="campo" style="flex:1;min-width:120px"><span>Fim</span><input type="time" id="ev-fim"></label>
     </div>
-    <p class="rotulo" style="margin:4px 0 8px">Quem trabalhou</p>
-    <div id="ev-pessoas"></div>
+    <label class="campo" style="margin-bottom:0"><span>Quem trabalhou</span>
+      <div style="position:relative">
+        <input type="text" id="ev-busca" placeholder="Digite o nome e escolha na lista" autocomplete="off"
+               role="combobox" aria-autocomplete="list" aria-controls="ev-sugestoes" aria-expanded="false">
+        <div id="ev-sugestoes" role="listbox" hidden style="position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;
+             background:var(--branco);border:1px solid var(--linha);border-radius:var(--raio);
+             box-shadow:var(--sombra);max-height:232px;overflow-y:auto;padding:4px 0"></div>
+      </div>
+    </label>
+    <div id="ev-pessoas" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
     <p class="nota" id="ev-resumo" style="margin-top:10px"></p>
     <p class="erro" id="ev-erro"></p>
   </div>
@@ -4652,36 +4660,102 @@ $('dlg-ajuste-salvar').onclick = async () => {
    adicional noturno e ao banco. Alterar e cancelar ficam no Ajustar do dia. */
 function resumoEvento(){
   const i = $('ev-ini').value, f = $('ev-fim').value;
-  const n = $('ev-pessoas').querySelectorAll('input:checked').length;
+  const n = evSel.length;
   if (!i || !f){ $('ev-resumo').textContent = ''; return; }
   const min = minutosEntre(i, f);
   const vira = f <= i;
   $('ev-resumo').textContent = `${hm(min)} por pessoa${vira ? ', terminando no dia seguinte' : ''}`
     + `${n ? ` · ${n} pessoa(s)` : ''}.`;
 }
+/* Quem trabalhou: caixa de texto com autocomplete. Escolhido vira etiqueta
+   com x para tirar. Setas navegam, Enter escolhe, Esc fecha. */
+let evSel = [], evFoco = -1;
+const semAcento = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const nomeDe = (id) => EQUIPE.find(e => e.id === id)?.nome ?? '';
+function evOpcoes(){
+  const q = semAcento($('ev-busca').value.trim());
+  const livres = comPonto().filter(e => !evSel.includes(e.id));
+  const achados = livres.filter(e => !q || semAcento(e.nome).includes(q));
+  const ops = achados.map(e => ({ id:e.id, txt:e.nome }));
+  if (!q && livres.length > 1) ops.unshift({ id:'*todos', txt:'Adicionar toda a equipe' });
+  return ops;
+}
+function evDesenharSugestoes(){
+  const box = $('ev-sugestoes'), ops = evOpcoes();
+  if (!ops.length){
+    box.innerHTML = `<div class="mudo" style="padding:10px 12px;font-size:13.5px">${
+      $('ev-busca').value.trim() ? 'Ninguém com esse nome.' : 'Todo mundo já foi adicionado.'}</div>`;
+  } else {
+    if (evFoco >= ops.length) evFoco = ops.length - 1;
+    box.innerHTML = ops.map((o, i) => `<div role="option" data-poe="${o.id}" aria-selected="${i === evFoco}"
+      style="padding:10px 12px;font-size:14px;cursor:pointer;${o.id === '*todos' ? 'color:var(--azul);font-weight:600;' : ''}
+      ${i === evFoco ? 'background:var(--superficie);' : ''}">${esc(o.txt)}</div>`).join('');
+  }
+  box.hidden = false; $('ev-busca').setAttribute('aria-expanded', 'true');
+}
+function evFechar(){ $('ev-sugestoes').hidden = true; $('ev-busca').setAttribute('aria-expanded', 'false'); evFoco = -1; }
+function evDesenharEscolhidos(){
+  $('ev-pessoas').innerHTML = evSel.map(id => `
+    <span style="display:inline-flex;align-items:center;gap:4px;padding:5px 6px 5px 12px;border-radius:999px;
+                 background:var(--azul-claro);color:var(--azul);font-size:13.5px;font-weight:500">
+      ${esc(nomeDe(id))}
+      <span role="button" tabindex="0" data-tira="${id}" aria-label="Tirar ${esc(nomeDe(id))}"
+            style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+                   border-radius:50%;cursor:pointer;font-size:16px;line-height:1">&times;</span>
+    </span>`).join('');
+  resumoEvento();
+}
+function evEscolher(id){
+  if (id === '*todos') evSel = comPonto().map(e => e.id);
+  else if (id && !evSel.includes(id)) evSel.push(id);
+  $('ev-busca').value = ''; evFoco = -1;
+  evDesenharEscolhidos(); evDesenharSugestoes();
+}
+$('ev-busca').onfocus = () => { evFoco = -1; evDesenharSugestoes(); };
+$('ev-busca').oninput = () => { evFoco = 0; evDesenharSugestoes(); };
+$('ev-busca').onblur  = () => setTimeout(evFechar, 120);
+$('ev-busca').onkeydown = (ev) => {
+  const ops = evOpcoes();
+  if (ev.key === 'ArrowDown'){ ev.preventDefault(); evFoco = Math.min(evFoco + 1, ops.length - 1); evDesenharSugestoes(); }
+  else if (ev.key === 'ArrowUp'){ ev.preventDefault(); evFoco = Math.max(evFoco - 1, 0); evDesenharSugestoes(); }
+  else if (ev.key === 'Enter'){ ev.preventDefault(); if (ops[evFoco < 0 ? 0 : evFoco]) evEscolher(ops[evFoco < 0 ? 0 : evFoco].id); }
+  else if (ev.key === 'Escape' && !$('ev-sugestoes').hidden){ ev.preventDefault(); ev.stopPropagation(); evFechar(); }
+  else if (ev.key === 'Backspace' && !$('ev-busca').value && evSel.length){ evSel.pop(); evDesenharEscolhidos(); evDesenharSugestoes(); }
+};
+// mousedown antes do blur, senão a lista fecha antes do clique valer
+$('ev-sugestoes').onmousedown = (ev) => {
+  const o = ev.target.closest('[data-poe]'); if (!o) return;
+  ev.preventDefault(); evEscolher(o.dataset.poe);
+};
+$('ev-pessoas').onclick = (ev) => {
+  const x = ev.target.closest('[data-tira]'); if (!x) return;
+  evSel = evSel.filter(id => id !== x.dataset.tira); evDesenharEscolhidos();
+};
+$('ev-pessoas').onkeydown = (ev) => {
+  const x = ev.target.closest('[data-tira]');
+  if (x && (ev.key === 'Enter' || ev.key === ' ')){ ev.preventDefault(); x.click(); $('ev-busca').focus(); }
+};
+
 $('btn-evento').onclick = async () => {
   await garantirEquipe();
   const atual = $('e-pessoa').value;
   $('ev-nome').value = ''; $('ev-ini').value = ''; $('ev-fim').value = ''; $('ev-erro').textContent = '';
   $('ev-data').value = new Intl.DateTimeFormat('en-CA', { timeZone: CFG.tz }).format(new Date());
-  $('ev-pessoas').innerHTML = comPonto().map(e => `
-    <label style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:14px;cursor:pointer">
-      <input type="checkbox" value="${e.id}" ${e.id === atual ? 'checked' : ''}> ${esc(e.nome)}
-    </label>`).join('') || '<p class="mudo">Nenhuma pessoa sujeita a controle de ponto.</p>';
-  resumoEvento();
+  evSel = comPonto().some(e => e.id === atual) ? [atual] : [];
+  $('ev-busca').value = ''; evFechar();
+  evDesenharEscolhidos();
   $('dlg-evento').showModal();
 };
 $('ev-ini').oninput = resumoEvento;
 $('ev-fim').oninput = resumoEvento;
-$('ev-pessoas').onchange = resumoEvento;
 $('ev-salvar').onclick = async () => {
   const err = $('ev-erro');
-  const pessoas = [...$('ev-pessoas').querySelectorAll('input:checked')].map(c => c.value);
+  const pessoas = [...evSel];
   const nome = $('ev-nome').value.trim();
   if (nome.length < 3) return (err.textContent = 'Informe o nome do evento.');
   if (!$('ev-data').value) return (err.textContent = 'Informe a data.');
   if (!$('ev-ini').value || !$('ev-fim').value) return (err.textContent = 'Informe início e fim.');
-  if (!pessoas.length) return (err.textContent = 'Marque quem trabalhou no evento.');
+  if (!pessoas.length) return (err.textContent = 'Adicione quem trabalhou no evento.');
   err.textContent = '';
   const btn = $('ev-salvar'); btn.disabled = true; btn.textContent = 'Lançando…';
   const { data: r, error } = await P.rpc('lancar_evento', { p_emps: pessoas, p_data: $('ev-data').value,
