@@ -1149,7 +1149,7 @@ main.wide{max-width:1500px}
       <textarea id="a-just" placeholder="Por que este ajuste está sendo feito. Fica registrado com seu nome."></textarea>
     </label>
     <p class="nota">A marcação original nunca é apagada. O ajuste entra como camada por
-    cima, com autor e data, e pode ser cancelado depois.</p>
+    cima, com autor e data, e pode ser alterado ou cancelado depois.</p>
     <p class="erro" id="dlg-ajuste-erro"></p>
   </div>
   <div class="rodape">
@@ -4380,49 +4380,147 @@ $('t-espelho').onclick = async (ev) => {
   $('dlg-ajuste-contexto').textContent =
     `${$('e-pessoa').selectedOptions[0].textContent} · ${d.split('-').reverse().join('/')}`;
   $('a-just').value = ''; $('a-hora').value = ''; $('a-min').value = '';
+  editAjuste = null; $('a-tipo').disabled = false;
+  $('dlg-ajuste-salvar').textContent = 'Registrar ajuste';
   $('a-dias').value = '1'; $('a-tipo').value = 'insercao'; $('a-tipo').onchange();
   $('dlg-ajuste-erro').textContent = '';
   await listarAjustesDoDia();
   $('dlg-ajuste').showModal();
 };
 
-/* A política de cancelamento existia no banco desde o começo, mas não havia
-   botão — um ajuste errado ficava lá para sempre. */
-async function listarAjustesDoDia(){
-  const { data } = await P.from('ajustes')
-    .select('id,tipo,horario,minutos,justificativa,cancelado_em')
-    .eq('empregado_id', ajustando.emp).eq('data', ajustando.data).order('criado_em');
-  const vivos = (data ?? []).filter(a => !a.cancelado_em);
-  $('ajustes-do-dia').innerHTML = vivos.length ? `
-    <p class="rotulo" style="margin-bottom:8px">Ajustes já lançados</p>
-    ${vivos.map(a => `<div style="display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--linha)">
-      <div style="flex:1">
-        <strong style="font-size:13.5px">${esc(a.tipo)}</strong>${a.horario ? ` · ${hora(a.horario)}` : a.minutos ? ` · ${hm(a.minutos)}` : ''}
-        <div class="mudo" style="font-size:12.5px;margin-top:2px">${esc(a.justificativa)}</div>
-      </div>
-      <button class="btn danger" data-cancelar="${a.id}" style="padding:6px 11px;font-size:12.5px;min-height:0">Cancelar</button>
-    </div>`).join('')}<div style="height:16px"></div>` : '';
+/* Ajustes do dia. Cada ajuste pode ser ALTERADO: a RPC alterar_ajuste cancela
+   o antigo e grava o novo na mesma transação, ligados por `substitui`, então o
+   histórico exigido pela Portaria 671 continua inteiro. Cancelar confirma na
+   própria linha (o dialog de confirmação por cima deste confundia: o botão
+   "Cancelar" dele fechava sem cancelar nada). Marcação original do relógio não
+   se edita: "Corrigir horário" desconsidera a batida e insere a certa (RPC
+   corrigir_marcacao). */
+let editAjuste = null;      // { kind:'ajuste'|'arp', id, rotulo }
+let AJUSTES_DIA = [];
+const TIPO_ROTULO = { insercao:'Marcação inserida', desconsiderar:'Marcação desconsiderada',
+  abono:'Abono', atestado:'Atestado', ferias:'Férias', folga:'Folga', compensacao:'Compensação' };
+const horaInput = (iso) => new Intl.DateTimeFormat('pt-BR',
+  { timeZone:CFG.tz, hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date(iso));
+
+function limparFormAjuste(){
+  $('a-just').value = ''; $('a-hora').value = ''; $('a-min').value = '';
+  $('a-dias').value = '1'; $('a-tipo').value = 'insercao'; $('a-tipo').disabled = false;
+  $('dlg-ajuste-erro').textContent = '';
 }
+function sairEdicao(){
+  editAjuste = null; limparFormAjuste();
+  $('dlg-ajuste-salvar').textContent = 'Registrar ajuste';
+  $('a-tipo').onchange();
+}
+
+async function listarAjustesDoDia(){
+  const [{ data }, { data: marcs }] = await Promise.all([
+    P.from('ajustes').select('id,tipo,horario,minutos,justificativa,cancelado_em,arp_id')
+      .eq('empregado_id', ajustando.emp).eq('data', ajustando.data).order('criado_em'),
+    P.rpc('marcacoes_efetivas', { p_emp: ajustando.emp, p_data: ajustando.data }),
+  ]);
+  const vivos = (data ?? []).filter(a => !a.cancelado_em);
+  const originais = (marcs ?? []).filter(m => m.origem === 'ponto');
+  AJUSTES_DIA = vivos;
+  const bt = (attr, id, txt, cls = 'leve') =>
+    `<button class="${cls}" ${attr}="${id}" style="padding:6px 11px;font-size:12.5px;min-height:0">${txt}</button>`;
+  const linha = (id, titulo, sub, acoes, cancelavel) => `
+    <div data-linha="${id}" style="padding:10px 0;border-bottom:1px solid var(--linha)">
+      <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:160px"><strong style="font-size:13.5px">${titulo}</strong>
+          ${sub ? `<div class="mudo" style="font-size:12.5px;margin-top:2px">${sub}</div>` : ''}</div>
+        ${acoes}
+      </div>
+      ${cancelavel ? `<div data-conf="${id}" hidden style="margin-top:10px">
+        <label class="campo" style="margin-bottom:8px"><span>Por que está sendo cancelado</span>
+          <input type="text" data-motivo="${id}"></label>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          ${bt('data-volta', id, 'Voltar')}${bt('data-confirma', id, 'Confirmar cancelamento', 'btn danger')}
+        </div></div>` : ''}
+    </div>`;
+  let html = '';
+  if (originais.length){
+    html += `<p class="rotulo" style="margin-bottom:8px">Marcações do relógio</p>`
+      + originais.map(m => linha('arp-' + m.arp_id, horaInput(m.horario), '',
+          bt('data-corrigir', m.arp_id, 'Corrigir horário'), false)).join('')
+      + '<div style="height:14px"></div>';
+  }
+  if (vivos.length){
+    html += `<p class="rotulo" style="margin-bottom:8px">Ajustes já lançados</p>`
+      + vivos.map(a => linha(a.id,
+          `${esc(TIPO_ROTULO[a.tipo] ?? a.tipo)}${a.horario ? ` · ${horaInput(a.horario)}` : a.minutos ? ` · ${hm(a.minutos)}` : ''}`,
+          esc(a.justificativa),
+          (a.tipo === 'desconsiderar' ? '' : bt('data-alterar', a.id, 'Alterar'))
+            + bt('data-cancelar', a.id, 'Cancelar', 'btn danger'),
+          true)).join('')
+      + '<div style="height:14px"></div>';
+  }
+  if (editAjuste){
+    html += `<div class="aviso info" style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="flex:1">Alterando: <strong>${esc(editAjuste.rotulo)}</strong>. Ajuste os campos abaixo e salve.</span>
+      ${bt('data-sair', '1', 'Desistir da alteração')}</div>`;
+  }
+  $('ajustes-do-dia').innerHTML = html;
+}
+
 $('ajustes-do-dia').onclick = async (ev) => {
-  const id = ev.target.closest('button')?.dataset.cancelar; if (!id) return;
-  const r = await confirmar({
-    titulo:'Cancelar ajuste',
-    texto:'O ajuste deixa de valer, mas continua registrado com o motivo e o autor do '
-      + 'cancelamento. Nada é apagado.',
-    okTexto:'Cancelar ajuste', motivo:{ rotulo:'Por que está sendo cancelado' },
-  });
-  if (!r) return;
-  if (await escrever(P.rpc('cancelar_ajuste', { p_ajuste:id, p_motivo:r.motivo }), 'Ajuste cancelado.')){
-    await listarAjustesDoDia(); carregarEspelho();
+  const b = ev.target.closest('button'); if (!b) return;
+  const d = b.dataset;
+  const q = (attr, id) => $('ajustes-do-dia').querySelector(`[${attr}="${id}"]`);
+
+  if (d.sair){ sairEdicao(); return listarAjustesDoDia(); }
+  if (d.cancelar){ q('data-conf', d.cancelar).hidden = false; q('data-motivo', d.cancelar).focus(); return; }
+  if (d.volta){ q('data-conf', d.volta).hidden = true; return; }
+
+  if (d.confirma){
+    const motivo = q('data-motivo', d.confirma).value.trim();
+    if (motivo.length < 5) return recado('Escreva o motivo do cancelamento, com pelo menos 5 letras.', 'erro');
+    b.disabled = true;
+    const ok = await escrever(P.rpc('cancelar_ajuste', { p_ajuste:d.confirma, p_motivo:motivo }), 'Ajuste cancelado.');
+    b.disabled = false;
+    if (ok){
+      if (editAjuste?.id === d.confirma) sairEdicao();
+      await listarAjustesDoDia(); carregarEspelho();
+    }
+    return;
+  }
+
+  if (d.alterar){
+    const a = AJUSTES_DIA.find(x => x.id === d.alterar); if (!a) return;
+    limparFormAjuste();
+    editAjuste = { kind:'ajuste', id:a.id,
+      rotulo:`${TIPO_ROTULO[a.tipo] ?? a.tipo}${a.horario ? ' · ' + horaInput(a.horario) : a.minutos ? ' · ' + hm(a.minutos) : ''}` };
+    $('a-tipo').value = a.tipo;
+    if (a.horario) $('a-hora').value = horaInput(a.horario);
+    if (a.minutos) $('a-min').value = a.minutos;
+    $('a-just').value = a.justificativa ?? '';
+    $('dlg-ajuste-salvar').textContent = 'Salvar alteração';
+    $('a-tipo').onchange();
+    await listarAjustesDoDia();
+    (a.horario ? $('a-hora') : $('a-min')).focus();
+    return;
+  }
+
+  if (d.corrigir){
+    const atual = b.closest('[data-linha]').querySelector('strong').textContent.trim();
+    limparFormAjuste();
+    editAjuste = { kind:'arp', id:d.corrigir, rotulo:`Marcação do relógio · ${atual}` };
+    $('a-tipo').value = 'insercao'; $('a-tipo').disabled = true;
+    $('a-hora').value = atual;
+    $('dlg-ajuste-salvar').textContent = 'Salvar alteração';
+    $('a-tipo').onchange();
+    await listarAjustesDoDia();
+    $('a-hora').focus();
   }
 };
 
 $('a-tipo').onchange = () => {
   const t = $('a-tipo').value;
+  const atestadoNovo = t === 'atestado' && !editAjuste;
   $('a-wrap-hora').hidden     = t !== 'insercao';
-  $('a-wrap-dias').hidden     = t !== 'atestado';
-  $('a-dica-atestado').hidden = t !== 'atestado';
-  $('a-wrap-min').hidden      = t === 'insercao' || t === 'atestado';
+  $('a-wrap-dias').hidden     = !atestadoNovo;
+  $('a-dica-atestado').hidden = !atestadoNovo;
+  $('a-wrap-min').hidden      = t === 'insercao' || atestadoNovo;
 };
 
 $('dlg-ajuste-salvar').onclick = async () => {
@@ -4431,6 +4529,30 @@ $('dlg-ajuste-salvar').onclick = async () => {
   const just = $('a-just').value.trim();
   if (!EU) return (err.textContent = 'Seu login não está ligado a um cadastro de pessoa.');
   if (just.length < 5) return (err.textContent = 'Escreva a justificativa — ela fica registrada com seu nome.');
+
+  if (editAjuste){
+    const precisaHora = editAjuste.kind === 'arp' || tipo === 'insercao';
+    if (precisaHora && !$('a-hora').value) return (err.textContent = 'Informe o horário da marcação.');
+    const horario = $('a-hora').value
+      ? new Date(`${ajustando.data}T${$('a-hora').value}:00-03:00`).toISOString() : null;
+    let chamada;
+    if (editAjuste.kind === 'arp'){
+      chamada = P.rpc('corrigir_marcacao', { p_arp: editAjuste.id, p_horario: horario, p_justificativa: just });
+    } else {
+      const min = Number($('a-min').value || 0);
+      if (tipo !== 'insercao' && min <= 0) return (err.textContent = 'Informe quantos minutos.');
+      chamada = P.rpc('alterar_ajuste', { p_ajuste: editAjuste.id, p_tipo: tipo,
+        p_horario: tipo === 'insercao' ? horario : null,
+        p_minutos: tipo === 'insercao' ? null : min, p_justificativa: just });
+    }
+    err.textContent = '';
+    const btnS = $('dlg-ajuste-salvar');
+    btnS.disabled = true;
+    const ok = await escrever(chamada, 'Alteração salva.');
+    btnS.disabled = false;
+    if (ok){ sairEdicao(); await listarAjustesDoDia(); carregarEspelho(); }
+    return;
+  }
 
   // Atestado medico e contado em DIAS. A RPC quebra o periodo em um abono por
   // dia com expediente, usando a carga prevista de cada dia.
