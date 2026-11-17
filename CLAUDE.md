@@ -4,9 +4,9 @@ Instruções permanentes para sessões do Claude neste repo.
 
 ## O que é
 
-Sistema administrativo do CNA Taquara. Cobre Taquara e Queimados. Equipe,
-documentos, contratos e parcerias, folha de pagamento, despesas, receitas, DRE
-e projeções.
+Sistema administrativo do CNA Taquara. Cobre três unidades: Taquara,
+Queimados e Jardim América. Equipe, documentos, contratos e parcerias, folha de
+pagamento, despesas, receitas, DRE e projeções.
 
 Já foi só "financeiro". Não é mais. O escopo hoje é administrativo, e o
 financeiro é um dos módulos.
@@ -14,6 +14,9 @@ financeiro é um dos módulos.
 - Produção: https://adm.cnataquara.com.br
 - Supabase: `thelqaxsnuynevizhcla` (tabelas `fin_*`)
 - Nome do repo segue o padrão da unidade: `cnataquara-{subdomínio}`
+- Unidades em `UNIDADES` (`index.html`): `taquara`, `queimados` e
+  `jardim-america`. A tela de escolha de unidade é **gerada** dessa lista
+  (`#unitBtns`), então acrescentar unidade é mexer só em `UNIDADES`
 
 ## Arquitetura
 
@@ -59,6 +62,30 @@ Elas moram no `index.html` mas apontam para o Supabase do ponto
 Não assuma que tudo neste repo é `fin_*`. O ponto eletrônico é
 **arquiteturalmente isolado** por razão fiscal e legal, e essa separação de
 banco é proposital. Ver `cnataquara-ponto`.
+
+### Uma unidade, um REP
+
+Multi-unidade desde 16/11/2026. Cada unidade do ADM é uma linha de `ponto.rep`
+cuja coluna `unidade` casa com o id de `UNIDADES`. O módulo resolve o REP pela
+unidade escolhida no ADM (`S.unidade` → `ponto.rep.unidade`) em
+`garantirRep()`, e **nada no módulo usa `rep limit 1`**. Esse padrão foi
+eliminado nas duas pontas: no front aqui e nas funções do banco, pela migration
+`ponto_020_multi_unidade`.
+
+O que decorre disso:
+
+- Tudo que o módulo lê ou grava passa pelo REP da unidade escolhida: equipe,
+  terminais, feriados, jornadas, banco de horas, pendências, relatórios e termo
+  de biometria. Pessoa, terminal e feriado nascem nesse REP.
+- Remover feriado só remove na unidade (`delete` com `eq('rep_id', REP)`).
+- Trocar de unidade zera os caches (`EQUIPE`, `TURNOS`, `SITUACAO`, `TERMO`,
+  `IDS`, `JORNADAS`).
+- Unidade sem linha em `ponto.rep` (hoje Queimados) mostra aviso e não abre as
+  telas do ponto.
+- As RPCs que não recebem REP (`situacao_cadastro`, `relatorio_faltas`,
+  `resumo_equipe`, `recorrencia_atrasos`, `listar_dispositivos`,
+  `apuracao_competencia`) são filtradas no cliente por `daUnidade()`, que mantém
+  só os `empregado_id` da unidade.
 
 Como a convivência funciona:
 
