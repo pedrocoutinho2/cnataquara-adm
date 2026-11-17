@@ -711,8 +711,7 @@ main.wide{max-width:1500px}
 
     <div id="unitBox" style="display:none">
       <p class="sub" style="margin-bottom:14px">Em qual unidade você quer entrar?</p>
-      <button class="unitBtn" onclick="loadUnidade('taquara')"><b>CNA Taquara</b><span>Estrada da Soca, 129 · Zona Oeste RJ</span></button>
-      <button class="unitBtn" onclick="loadUnidade('queimados')"><b>CNA Queimados</b><span>Unidade Queimados</span></button>
+      <div id="unitBtns"></div>
       <div class="authSwitch"><a onclick="logout()">Sair</a></div>
     </div>
   </div>
@@ -1279,7 +1278,7 @@ const PONTO_ANON = 'sb_publishable_T0rV6HAXusL_3J3Yzh-P_Q_CieYFkjA';
 const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoZWxxYXhzbnV5bmV2aXpoY2xhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4NjA0MDUsImV4cCI6MjEwMTQzNjQwNX0.Xn52cJ74rnzmjcHcilbpqwy0BbmPF4fvb9bhoxEzzIw';
 const LOGO = 'data:image/png;base64,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';
 
-const UNIDADES=[{id:'taquara',nome:'CNA Taquara',sub:'Estrada da Soca, 129'},{id:'queimados',nome:'CNA Queimados',sub:'Unidade Queimados'}];
+const UNIDADES=[{id:'taquara',nome:'CNA Taquara',sub:'Unidade Taquara'},{id:'queimados',nome:'CNA Queimados',sub:'Unidade Queimados'},{id:'jardim-america',nome:'CNA Jardim América',sub:'Unidade Jardim América'}];
 let S = { token:null, refresh:null, uid:null, role:null, nome:null, email:null, avatar:null, telefone:null, unidade:null, comp: curComp(), view:'resumo', cfg:{} };
 
 /* ================= SESSAO PERSISTIDA =================
@@ -1408,6 +1407,7 @@ async function afterLogin(){
 }
 function showUnitPicker(){
   authMsg(''); loginBox.style.display='none'; inviteBox.style.display='none';
+  document.getElementById('unitBtns').innerHTML=UNIDADES.map(u=>`<button class="unitBtn" onclick="loadUnidade('${u.id}')"><b>${u.nome}</b><span>${u.sub}</span></button>`).join('');
   unitBox.style.display='block';
   document.getElementById('app').style.display='none';
   document.getElementById('auth').style.display='flex';
@@ -3645,6 +3645,26 @@ const POSES = [
   { rotulo:'Levemente à esq.', dica:'Vire o rosto um pouco para a esquerda' },
 ];
 let TERMO = null, faceapi = null, modelosProntos = false;
+
+/* Multi-unidade (16/11/2026): cada unidade do ADM é uma linha de ponto.rep com a
+   mesma coluna unidade. Tudo que o módulo lê ou grava passa pelo REP da unidade
+   escolhida no ADM (S.unidade). Trocar de unidade zera os caches. */
+let REP = null, REP_UNIDADE = null, IDS = new Set();
+async function garantirRep(){
+  const alvo = typeof S !== 'undefined' ? S.unidade : null;
+  if (REP && REP_UNIDADE === alvo) return REP;
+  EQUIPE = []; TURNOS = {}; SITUACAO = {}; TERMO = null; IDS = new Set(); JORNADAS = [];
+  REP = null; REP_UNIDADE = alvo;
+  if (!alvo) return null;
+  const { data } = await P.from('rep').select('id').eq('unidade', alvo).maybeSingle();
+  REP = data?.id ?? null;
+  if (REP){
+    const { data: j } = await P.from('jornadas').select('id,nome').eq('ativa', true).eq('rep_id', REP).order('nome');
+    JORNADAS = j ?? [];
+  }
+  return REP;
+}
+const daUnidade = (r) => r?.error ? r : { ...r, data: (r?.data ?? []).filter(x => IDS.has(x.empregado_id)) };
 const BIO = { emp:null, nome:'', descritores:[], stream:null };
 
 /* Trava a rolagem do fundo enquanto qualquer dialogo estiver aberto.
@@ -3806,16 +3826,17 @@ function bioCel(e){
 async function carregarEquipe(){
   const { data, error } = await P.from('empregados')
     .select('id,nome,cpf,cargo,email,auth_user_id,admissao,demissao,ativo,escala_sabado,isento_ponto')
-    .order('nome');
+    .eq('rep_id', REP).order('nome');
   if (error) return recado(traduzir(error.message), 'erro');
   EQUIPE = data ?? [];
+  IDS = new Set(EQUIPE.map(e => e.id));
 
   const { data: vinc } = await P.from('empregado_jornada').select('empregado_id, jornadas(nome)');
   TURNOS = Object.fromEntries((vinc ?? []).map(v => [v.empregado_id, v.jornadas?.nome]));
 
   // situacao_cadastro so devolve gente ativa, entao quem esta desligado cai no
   // fallback e a celula mostra traço em vez de "falta".
-  const { data: sit } = await P.rpc('situacao_cadastro');
+  const { data: sit } = daUnidade(await P.rpc('situacao_cadastro'));
   SITUACAO = Object.fromEntries((sit ?? []).map(s => [s.empregado_id, s]));
 
   const saldos = Object.fromEntries(await Promise.all(EQUIPE.map(async e => {
@@ -3877,8 +3898,9 @@ async function garantirEquipe(){
   if (EQUIPE.length) return;
   const { data } = await P.from('empregados')
     .select('id,nome,cpf,cargo,email,auth_user_id,admissao,demissao,ativo,escala_sabado,isento_ponto')
-    .order('nome');
+    .eq('rep_id', REP).order('nome');
   EQUIPE = data ?? [];
+  IDS = new Set(EQUIPE.map(e => e.id));
   preencherPessoas();
 }
 $('q-equipe').oninput = carregarEquipe;
@@ -4015,7 +4037,7 @@ $('dlg-pessoa-salvar').onclick = async () => {
       }
       recado('Cadastro atualizado.', 'ok');
     } else {
-      const { data: rep } = await P.from('rep').select('id').limit(1).single();
+      const rep = { id: REP };
       const novo = await escrever(
         P.from('empregados').insert({ ...dados, rep_id: rep.id }).select('id').single());
       if (!novo) return;
@@ -4089,7 +4111,7 @@ async function abrirBio(emp, nome){
   $('dlg-bio').showModal();
 
   if (!TERMO){
-    const { data: t } = await P.from('termos').select('*').eq('vigente', true).maybeSingle();
+    const { data: t } = await P.from('termos').select('*').eq('vigente', true).eq('rep_id', REP).maybeSingle();
     TERMO = t;
   }
   $('bio-termo').innerHTML = TERMO
@@ -4246,7 +4268,7 @@ async function sha256hex(txt){
 
 async function carregarTerminais(){
   const { data, error } = await P.from('terminais')
-    .select('id,nome,ativo,criado_em,revogado_em,ultimo_uso_em').order('criado_em');
+    .select('id,nome,ativo,criado_em,revogado_em,ultimo_uso_em').eq('rep_id', REP).order('criado_em');
   if (error) return recado(traduzir(error.message), 'erro');
   const lista = data ?? [];
 
@@ -4292,7 +4314,7 @@ $('tk-gerar').onclick = async () => {
     const token = btoa(String.fromCharCode(...bytes))
       .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 
-    const { data: rep } = await P.from('rep').select('id').limit(1).single();
+    const rep = { id: REP };
     const ok = await escrever(P.from('terminais').insert({
       rep_id: rep.id, nome, token_hash: await sha256hex(token), criado_por: EU?.id ?? null,
     }));
@@ -4797,7 +4819,7 @@ async function carregarBanco(){
   await garantirEquipe();
   const fim = $('b-fim').value;
   const { data: cfg } = await P.from('banco_config')
-    .select('prazo_meses,teto_positivo_min,teto_negativo_min').maybeSingle();
+    .select('prazo_meses,teto_positivo_min,teto_negativo_min').eq('rep_id', REP).maybeSingle();
   const prazo = cfg?.prazo_meses ?? 6;
 
   $('banco-aviso').innerHTML =
@@ -4864,7 +4886,7 @@ $('t-banco').onclick = async (ev) => {
 /* ===================== PENDÊNCIAS ===================== */
 async function carregarPendencias(){
   const ini = $('pd-ini').value, fim = $('pd-fim').value;
-  const { data: faltas, error } = await P.rpc('relatorio_faltas', { p_ini:ini, p_fim:fim });
+  const { data: faltas, error } = daUnidade(await P.rpc('relatorio_faltas', { p_ini:ini, p_fim:fim }));
   if (error) return recado(traduzir(error.message), 'erro');
 
   $('t-aberto').innerHTML = (faltas ?? []).length ? faltas.map(f => `<tr>
@@ -4875,7 +4897,7 @@ async function carregarPendencias(){
     <td data-rotulo=""><div class="acoes-linha"><button class="leve" data-ir="${f.empregado_id}|${f.data}">Abrir espelho</button></div></td>
   </tr>`).join('') : '<tr><td colspan="5" class="vazio">Nada em aberto no período. Bom sinal.</td></tr>';
 
-  const { data: sin } = await P.from('v_pendencias').select('*').limit(80);
+  const { data: sin } = await P.from('v_pendencias').select('*').eq('rep_id', REP).limit(80);
   $('t-sinalizadas').innerHTML = (sin ?? []).length ? sin.map(s => `<tr>
     <td class="destaque" data-rotulo="">${esc(s.nome)}</td>
     <td data-rotulo="Quando">${dia(diaBR(s.dh_marcacao))} ${hora(s.dh_marcacao)}</td>
@@ -4987,7 +5009,7 @@ async function carregarRelatorios(){
   $('g-horas').innerHTML = '<p class="vazio">Calculando…</p>';
   $('g-saldo').innerHTML = '';
 
-  const { data: resumo, error } = await P.rpc('resumo_equipe', { p_ini:ini, p_fim:fim });
+  const { data: resumo, error } = daUnidade(await P.rpc('resumo_equipe', { p_ini:ini, p_fim:fim }));
   if (error){ $('g-horas').innerHTML = ''; return recado(traduzir(error.message), 'erro'); }
   const R = resumo ?? [];
 
@@ -5026,7 +5048,7 @@ async function carregarRelatorios(){
     <td class="n ${r.dias_em_aberto ? 'neg' : ''}" data-rotulo="Em aberto">${r.dias_em_aberto}</td>
   </tr>`).join('') : '<tr><td colspan="10" class="vazio">Nenhuma pessoa ativa no período.</td></tr>';
 
-  const { data: rec } = await P.rpc('recorrencia_atrasos', { p_ini:ini, p_fim:fim });
+  const { data: rec } = daUnidade(await P.rpc('recorrencia_atrasos', { p_ini:ini, p_fim:fim }));
   const porPessoa = {};
   for (const r of rec ?? []) (porPessoa[r.nome] ??= {})[r.dia_semana] = r;
   const cab = '<div></div>' + [1,2,3,4,5,6].map(d => `<div class="cab">${DOW[d]}</div>`).join('');
@@ -5059,7 +5081,7 @@ async function carregarRelatorios(){
       : `A equipe soma ${total} atraso(s) no período, sem concentração em nenhum dia da semana. `
         + `Atraso espalhado assim costuma ser trânsito e imprevisto, não hábito.`
 
-  const { data: faltas } = await P.rpc('relatorio_faltas', { p_ini:ini, p_fim:fim });
+  const { data: faltas } = daUnidade(await P.rpc('relatorio_faltas', { p_ini:ini, p_fim:fim }));
   $('t-faltas').innerHTML = (faltas ?? []).length ? faltas.map(f => `<tr>
     <td class="destaque" data-rotulo="">${esc(f.nome)}</td>
     <td data-rotulo="Data">${dia(f.data)}</td>
@@ -5084,7 +5106,7 @@ document.querySelectorAll('#p-relatorios [data-periodo]').forEach(b => b.onclick
 
 /* ===================== CONFIGURAÇÕES ===================== */
 async function carregarConfig(){
-  const { data: disp } = await P.rpc('listar_dispositivos');
+  const { data: disp } = daUnidade(await P.rpc('listar_dispositivos'));
   $('t-dispositivos').innerHTML = (disp ?? []).length ? disp.map(d => `<tr class="${d.ativo?'':'inativo'}">
     <td class="destaque" data-rotulo="">${esc(d.nome)}</td>
     <td data-rotulo="Aparelho">${esc(d.apelido) || '—'}</td>
@@ -5096,7 +5118,7 @@ async function carregarConfig(){
   </tr>`).join('') : '<tr><td colspan="6" class="vazio">Nenhum aparelho registrado ainda.</td></tr>';
 
   const ano = $('f-ano').value || new Date().getFullYear();
-  const { data: fer } = await P.from('feriados').select('data,nome,tipo')
+  const { data: fer } = await P.from('feriados').select('data,nome,tipo').eq('rep_id', REP)
     .gte('data', `${ano}-01-01`).lte('data', `${ano}-12-31`).order('data');
   $('t-feriados').innerHTML = (fer ?? []).length ? fer.map(f => `<tr>
     <td class="destaque" data-rotulo="">${dia(f.data)} <span class="mudo">${DOW[new Date(f.data+'T12:00').getDay()]}</span></td>
@@ -5109,7 +5131,7 @@ async function carregarConfig(){
     .select('dia_semana,entrada,saida_almoco,volta_almoco,saida,carga_min,jornadas(id,nome,tolerancia_min)');
   const porJornada = {};
   for (const d of jd ?? []){
-    const j = d.jornadas; if (!j) continue;
+    const j = d.jornadas; if (!j || !JORNADAS.some(x => x.id === j.id)) continue;
     (porJornada[j.nome] ??= { tol:j.tolerancia_min, dias:[] }).dias.push(d);
   }
   $('t-jornadas').innerHTML = Object.entries(porJornada).map(([nome, j]) => {
@@ -5158,7 +5180,7 @@ $('btn-novo-feriado').onclick = () => {
 $('fr-salvar').onclick = async () => {
   if (!$('fr-data').value) return ($('fr-erro').textContent = 'Informe a data.');
   if ($('fr-nome').value.trim().length < 3) return ($('fr-erro').textContent = 'Informe o nome do feriado.');
-  const { data: rep } = await P.from('rep').select('id').limit(1).single();
+  const rep = { id: REP };
   if (await escrever(P.from('feriados').insert({
     rep_id: rep.id, data:$('fr-data').value,
     nome:$('fr-nome').value.trim(), tipo:$('fr-tipo').value }), 'Feriado cadastrado.')){
@@ -5174,7 +5196,7 @@ $('t-feriados').onclick = async (ev) => {
     texto:`O dia ${dia(d)} volta a contar como dia útil, e a apuração de quem trabalhou `
       + 'nele será refeita na próxima consulta ao espelho.', okTexto:'Remover' });
   if (!r) return;
-  if (await escrever(P.from('feriados').delete().eq('data', d), 'Feriado removido.')) carregarConfig();
+  if (await escrever(P.from('feriados').delete().eq('data', d).eq('rep_id', REP), 'Feriado removido.')) carregarConfig();
 };
 
 $('btn-novo-acesso').onclick = () => {
@@ -5239,8 +5261,6 @@ async function boot(){
     $('pontoMain').prepend(av);
   }
 
-  const { data: j } = await P.from('jornadas').select('id,nome').eq('ativa', true).order('nome');
-  JORNADAS = j ?? [];
 
   const hoje = new Date();
   const primeiro = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0,10);
@@ -5288,6 +5308,11 @@ async function abrir(aba){
     const ok = await boot();
     if (!ok){ $('ra-email').focus(); return; }
   }
+  if (!(await garantirRep())){
+    mostrarPainel('p-' + aba);
+    return recado('Esta unidade ainda não tem ponto eletrônico cadastrado.', 'erro');
+  }
+  await garantirEquipe();
   mostrarPainel('p-' + aba);
   CARREGA[aba]?.();
 }
@@ -5296,6 +5321,7 @@ async function sair(){
   await sb.auth.signOut();
   bootado = false;
   EU = null; EQUIPE = []; JORNADAS = []; TURNOS = {}; SITUACAO = {};
+  REP = null; REP_UNIDADE = null; IDS = new Set(); TERMO = null;
 }
 
 /* Ponte com a folha do administrativo. O ADM roda no projeto financeiro e
@@ -5303,7 +5329,9 @@ async function sair(){
    competencia para a tela de fechamento preencher sozinha. */
 async function apuracao(comp){
   if (!bootado && !(await boot())) return null;
-  const { data, error } = await P.rpc('apuracao_competencia', { p_comp: comp });
+  if (!(await garantirRep())) return [];
+  await garantirEquipe();
+  const { data, error } = daUnidade(await P.rpc('apuracao_competencia', { p_comp: comp }));
   if (error) throw new Error(traduzir(error.message));
   return data ?? [];
 }
